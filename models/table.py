@@ -54,9 +54,8 @@ class Column(BaseModel):
     colProp: ColProp = Field(..., description="字段属性")
     dataType: DataType = Field(..., description="字段数据类型")
     colType: ColType = Field(default=ColType.NORMAL, description="字段分类")
-    tableId: str = Field(default=..., description="所属表ID，新增时为空，修改时必填")
+    tableId: Optional[str] = Field(default="", description="所属表ID，新增时为空，修改时必填")
     metrics: Optional[List[MetricCol]] = Field(None, description="关联的指标列表,仅指标字段有效，且可选")
-
 
 class TableInfo(BaseModel):
     """数据表完整信息模型"""

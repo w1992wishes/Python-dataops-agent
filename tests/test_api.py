@@ -79,14 +79,8 @@ class APITester:
 
                 if response.status == 200:
                     data = await response.json()
-
+                    logger.info(f"--------------------data--------------------{json.dumps(data, ensure_ascii=False, indent=2)}")
                     if data.get("success"):
-                        table_info = data.get("table_info", {})
-                        logger.info("🎯 [TEST] 表结构生成测试:")
-                        logger.info(f"   📊 表名: {table_info.get('nameZh', 'N/A')} ({table_info.get('name', 'N/A')})")
-                        logger.info(f"   📋 字段数量: {len(table_info.get('cols', []))}")
-                        logger.info(f"   🏷️ 表类型: {table_info.get('levelType', 'N/A')}")
-
                         self.log_test("表结构生成", True, data)
                         return data
                     else:
@@ -382,9 +376,9 @@ class APITester:
 
         # 核心功能测试
         logger.info("\n🎯 核心功能测试")
-        # await self.test_table_generation()
+        await self.test_table_generation()
         # await self.test_etl_development()
-        await self.test_metric_management()
+        #await self.test_metric_management()
         # await self.test_metric_update()
 
         # 流式接口测试

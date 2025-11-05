@@ -274,6 +274,13 @@ class TableGenerationAgent(BaseAgent):
             相关指标信息：
             {metrics_info}
 
+            重要注意事项：
+            - 如果是创建新表，所有字段的 tableId 应该设置为空字符串 ""
+            - 如果是更新现有表，请保留原有字段的 tableId 或根据需要设置
+            - 字段的 colProp 可以是 "DIM"（维度）、"METRIC"（指标）或 "NORMAL"（普通）
+            - 字段的 dataType 可以是 "string"、"date" 或 "float"
+            - 字段的 colType 通常是 0（普通字段）或 2（分区键）
+
             请生成包含以下信息的表结构：
             {format_instructions}
             """)
@@ -367,7 +374,7 @@ def register_table_agent():
     default_table_config = AgentConfig(
         name="table_generation",
         version="3.0.0",
-        description="智能表结构生成Agent - 极简版本，根据自然语言描述生成数据库表结构",
+        description="智能表结构生成Agent - 根据自然语言描述生成数据库表结构",
         timeout=300,
         model_name="deepseek-ai/DeepSeek-V3.1"
     )

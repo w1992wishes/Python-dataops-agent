@@ -352,7 +352,7 @@ def register_etl_agent():
     default_etl_config = AgentConfig(
         name="etl_development",
         version="3.0.0",
-        description="ETL脚本开发Agent - 极简版本，直接生成Hive ETL脚本",
+        description="ETL脚本开发Agent - 生成Hive ETL脚本",
         timeout=300,
         model_name="deepseek-ai/DeepSeek-V3.1"
     )
