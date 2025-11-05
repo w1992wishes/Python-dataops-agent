@@ -19,6 +19,10 @@ from tools import query_table, query_metric_by_name_zh
 # LLM输出解析模型
 class TableRequestAnalysisModel(BaseModel):
     """表请求分析结果模型"""
+    operation_type: str = Field(
+        description="操作类型：create/update/query，根据用户意图判断",
+        examples=["create", "update", "query"]
+    )
     db_name: Optional[str] = Field(default=None, description="数据库名，如果用户明确指定")
     table_name: Optional[str] = Field(default=None, description="表名，如果用户明确指定")
     metric_name_zh_list: List[str] = Field(default_factory=list, description="指标中文名称列表，从用户描述中提取的指标词汇")
@@ -27,6 +31,7 @@ class TableRequestAnalysisModel(BaseModel):
     model_config = {
         "json_schema_extra": {
             "example": {
+                "operation_type": "create",
                 "db_name": "warehouse",
                 "table_name": "user_order_fact",
                 "metric_name_zh_list": ["订单金额", "用户活跃度", "转化率"],
@@ -63,6 +68,7 @@ class TableGenerationAgent(BaseAgent):
         class AgentState(TypedDict):
             messages: List[Any]
             user_input: str
+            operation_type: str
             db_name: Optional[str]
             table_name: Optional[str]
             metric_name_zh_list: List[str]
@@ -100,12 +106,17 @@ class TableGenerationAgent(BaseAgent):
         用户描述：{user_input}
 
         请仔细分析用户描述，提取以下信息：
-        1. db_name: 如果用户明确提到了数据库名称，请提取；如果没有明确指定则为null
-        2. table_name: 如果用户明确提到了表名，请提取；如果没有明确指定则为null
-        3. metric_name_zh_list: 从用户描述中识别出所有与指标相关的中文名称，形成一个列表
-        4. table_purpose: 根据用户描述，总结这个表的用途和业务场景
+        1. operation_type: 操作类型（create/update/query），根据用户意图判断
+           - 包含"创建"、"新建"、"生成"、"建立一个"等词汇 → create
+           - 包含"修改"、"更新"、"变更"、"调整"等词汇 → update
+           - 包含"查询"、"查看"、"搜索"、"找一下"、"获取"等词汇 → query
+        2. db_name: 如果用户明确提到了数据库名称，请提取；如果没有明确指定则为null
+        3. table_name: 如果用户明确提到了表名，请提取；如果没有明确指定则为null
+        4. metric_name_zh_list: 从用户描述中识别出所有与指标相关的中文名称，形成一个列表
+        5. table_purpose: 根据用户描述，总结这个表的用途和业务场景
 
         注意事项：
+        - 操作类型要根据用户的明确意图判断，这是后续处理的关键
         - 只有在用户非常明确地指定数据库名和表名时才提取，不要凭空推测
         - 指标列表要尽可能完整，包括所有可能相关的指标词汇
         - 表用途要简洁明了，说明表的核心作用
@@ -123,18 +134,30 @@ class TableGenerationAgent(BaseAgent):
             # 转换为字典格式
             parsed_data = result.dict()
 
+            # 智能操作类型映射（类似 metric_agent）
+            operation_map = {
+                "创建": "create", "新建": "create", "生成": "create", "建立一个": "create",
+                "修改": "update", "更新": "update", "变更": "update", "调整": "update",
+                "查询": "query", "查看": "query", "搜索": "query", "找一下": "query", "获取": "query"
+            }
+
+            operation_text = parsed_data.get("operation_type", "create")
+            operation_type = operation_map.get(operation_text, "create")
+
+            state["operation_type"] = operation_type
             state["db_name"] = parsed_data.get("db_name")
             state["table_name"] = parsed_data.get("table_name")
             state["metric_name_zh_list"] = parsed_data.get("metric_name_zh_list", [])
             state["table_purpose"] = parsed_data.get("table_purpose", "")
 
-            self._logger.info(f"✅ 解析成功 - 数据库: {state['db_name']}, 表: {state['table_name']}")
+            self._logger.info(f"✅ 解析成功 - 操作类型: {operation_type}, 数据库: {state['db_name']}, 表: {state['table_name']}")
             self._logger.info(f"📊 识别到指标数量: {len(state['metric_name_zh_list'])}")
             self._logger.info(f"🎯 指标列表: {state['metric_name_zh_list']}")
             self._logger.info(f"📝 表用途: {state['table_purpose']}")
 
         except Exception as e:
             self._logger.error(f"❌ 解析输入失败: {e}")
+            state["operation_type"] = "create"  # 默认操作类型
             state["db_name"] = None
             state["table_name"] = None
             state["metric_name_zh_list"] = []
@@ -288,6 +311,7 @@ class TableGenerationAgent(BaseAgent):
         initial_state = {
             "messages": [],
             "user_input": user_input,
+            "operation_type": "create",  # 默认操作类型
             "db_name": None,
             "table_name": None,
             "metric_name_zh_list": [],
@@ -302,16 +326,20 @@ class TableGenerationAgent(BaseAgent):
             result = await self.graph.ainvoke(initial_state)
 
             table_info = result.get("final_table_info")
+            operation_type = result.get("operation_type", "create")
+
             if table_info:
                 table_name = table_info.get('name', 'N/A')
                 table_name_zh = table_info.get('nameZh', 'N/A')
                 self._logger.info(f"🎉 表生成工作流执行成功!")
                 self._logger.info(f"📊 生成表名: {table_name} ({table_name_zh})")
+                self._logger.info(f"🔄 操作类型: {operation_type}")
 
                 return AgentResponse(
                     success=True,
                     data={
-                        "table_info": table_info
+                        "table_info": table_info,
+                        "analysis": {"operation_type": operation_type}
                     }
                 )
             else:

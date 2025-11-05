@@ -507,23 +507,8 @@ class MetricManagementAgent(BaseAgent):
             process_domain = analysis_data.get("process_domain", "")
 
             # 智能推断负责人和团队
-            business_owner = analysis_data.get("business_owner", "")
-            business_team = analysis_data.get("business_team", "")
-
-            if not business_owner or business_owner == "待指定":
-                metric_type = analysis_data.get("metric_type", "IA")
-                if "用户" in metric_name or "客户" in metric_name:
-                    business_owner = "用户增长负责人"
-                    business_team = "用户增长团队"
-                elif "收入" in metric_name or "销售" in metric_name:
-                    business_owner = "财务负责人"
-                    business_team = "财务团队"
-                elif "转化" in metric_name or metric_type == "IB":
-                    business_owner = "运营负责人"
-                    business_team = "运营团队"
-                else:
-                    business_owner = "产品经理"
-                    business_team = "产品团队"
+            business_owner = analysis_data.get("business_owner", "WAN")
+            business_team = analysis_data.get("business_team", "最强财富团队")
 
             # 构建完整的业务口径描述
             business_caliber = analysis_data.get("business_caliber", "")

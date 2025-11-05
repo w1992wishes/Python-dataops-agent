@@ -17,16 +17,19 @@ from tools import get_etl_script
 # LLM输出解析模型
 class ETLRequestAnalysisModel(BaseModel):
     """ETL请求分析结果模型"""
+    operation_type: str = Field(
+        description="操作类型：create/update/query，根据用户意图判断",
+        examples=["create", "update", "query"]
+    )
     table_name: str = Field(description="目标表名，从用户输入中提取")
-    operation_type: str = Field(description="操作类型：modify/extend/create/fix/optimize等")
     modification_requirements: List[str] = Field(description="具体的修改需求列表")
     additional_context: str = Field(default="", description="额外的上下文信息")
 
     model_config = {
         "json_schema_extra": {
             "example": {
+                "operation_type": "update",
                 "table_name": "policy_renewal",
-                "operation_type": "extend",
                 "modification_requirements": ["添加续签提醒字段", "增加保费计算逻辑"],
                 "additional_context": "用于提升续签率的业务分析"
             }
@@ -59,7 +62,7 @@ class ETLDevelopmentAgent(BaseAgent):
             operation_type: str
             modification_requirements: List[str]
             additional_context: str
-            existing_etl_code: Optional[str]
+            etl_info: Optional[Dict[str, Any]]
             final_etl_code: Optional[str]
             error_message: Optional[str]
 
@@ -89,19 +92,17 @@ class ETLDevelopmentAgent(BaseAgent):
         用户需求：{user_input}
 
         请仔细分析用户输入，提取以下信息：
-        1. table_name: 目标表名，用户提到的数据库表名
-        2. operation_type: 操作类型，如：
-           - modify: 修改现有ETL逻辑
-           - extend: 扩展现有ETL功能
-           - create: 创建新ETL脚本
-           - fix: 修复ETL问题
-           - optimize: 优化ETL性能
+        1. operation_type: 操作类型（create/update/query），根据用户意图判断
+           - 包含"创建"、"新建"、"生成"、"写一个"等词汇 → create
+           - 包含"修改"、"更新"、"变更"、"调整"、"优化"等词汇 → update
+           - 包含"查询"、"查看"、"搜索"、"找一下"、"获取"等词汇 → query
+        2. table_name: 目标表名，用户提到的数据库表名
         3. modification_requirements: 具体的修改需求列表，每个需求要具体明确
         4. additional_context: 额外的上下文信息，帮助理解业务场景
 
         注意事项：
+        - 操作类型要根据用户的明确意图判断，这是后续处理的关键
         - 表名要准确提取，这是后续查询ETL脚本的关键
-        - 操作类型要基于用户的描述准确判断
         - 修改需求要具体，便于后续ETL代码修改
         - 如果用户没有明确提到表名，请根据上下文推断
 
@@ -118,14 +119,24 @@ class ETLDevelopmentAgent(BaseAgent):
             # 转换为字典格式
             analysis_data = result.dict()
 
+            # 智能操作类型映射（类似 metric_agent）
+            operation_map = {
+                "创建": "create", "新建": "create", "生成": "create", "写一个": "create",
+                "修改": "update", "更新": "update", "变更": "update", "调整": "update", "优化": "update",
+                "查询": "query", "查看": "query", "搜索": "query", "找一下": "query", "获取": "query"
+            }
+
+            operation_text = analysis_data.get("operation_type", "update")
+            operation_type = operation_map.get(operation_text, "update")
+
             state["table_name"] = analysis_data.get("table_name", "")
-            state["operation_type"] = analysis_data.get("operation_type", "")
+            state["operation_type"] = operation_type
             state["modification_requirements"] = analysis_data.get("modification_requirements", [])
             state["additional_context"] = analysis_data.get("additional_context", "")
 
             self._logger.info(f"✅ 需求解析完成")
             self._logger.info(f"📊 目标表: {state['table_name']}")
-            self._logger.info(f"🔧 操作类型: {state['operation_type']}")
+            self._logger.info(f"🔧 操作类型: {operation_type}")
             self._logger.info(f"📝 修改需求数量: {len(state['modification_requirements'])}")
             for i, req in enumerate(state['modification_requirements'], 1):
                 self._logger.info(f"   {i}. {req}")
@@ -135,7 +146,7 @@ class ETLDevelopmentAgent(BaseAgent):
             state["error_message"] = f"解析需求失败: {str(e)}"
             # 设置默认值
             state["table_name"] = "unknown"
-            state["operation_type"] = "modify"
+            state["operation_type"] = "update"  # 默认操作类型
             state["modification_requirements"] = []
             state["additional_context"] = ""
 
@@ -149,14 +160,15 @@ class ETLDevelopmentAgent(BaseAgent):
         try:
             if not table_name or table_name == "unknown":
                 self._logger.warning("⚠️ 缺少有效的表名，跳过ETL查询")
-                state["existing_etl_code"] = None
+                state["etl_info"] = {}
                 return state
 
             # 调用工具查询ETL脚本
-            existing_etl_code = await get_etl_script(table_name)
+            etl_script = await get_etl_script(table_name)
 
-            if existing_etl_code:
-                state["existing_etl_code"] = existing_etl_code
+            if etl_script:
+                state["etl_info"] = etl_script
+                existing_etl_code = etl_script.get("etl_code", "")
                 self._logger.info(f"✅ 找到现有ETL脚本")
                 self._logger.info(f"📄 代码长度: {len(existing_etl_code)} 字符")
 
@@ -165,7 +177,7 @@ class ETLDevelopmentAgent(BaseAgent):
                 self._logger.info(f"🔍 代码预览: {preview}")
             else:
                 self._logger.info(f"ℹ️ 未找到表 {table_name} 的现有ETL脚本")
-                state["existing_etl_code"] = None
+                state["etl_info"] = {}
 
         except Exception as e:
             self._logger.error(f"❌ 查询ETL脚本失败: {e}")
@@ -177,7 +189,7 @@ class ETLDevelopmentAgent(BaseAgent):
     async def _generate_etl(self, state) -> Dict[str, Any]:
         """直接用LLM生成新的ETL脚本"""
         user_input = state["user_input"]
-        existing_etl_code = state.get("existing_etl_code")
+        etl_info = state.get("etl_info")
         modification_requirements = state.get("modification_requirements", [])
         operation_type = state.get("operation_type", "")
         additional_context = state.get("additional_context", "")
@@ -187,13 +199,13 @@ class ETLDevelopmentAgent(BaseAgent):
 
         try:
             # 构建现有ETL信息
-            existing_code_info = ""
-            if existing_etl_code:
+            existing_code_info = "" if etl_info else etl_info.get("etl_code", "")
+            if existing_code_info:
                 # 现有ETL脚本信息（保持变量引用不变）
                 existing_code_info = f"""
 现有ETL脚本：
 ```sql
-{existing_etl_code}
+{existing_code_info}
 ```
 
 注意：现有脚本中的变量引用（如 $变量名）是合理的，在生成新脚本时请保留这些变量引用。
@@ -285,7 +297,7 @@ class ETLDevelopmentAgent(BaseAgent):
             initial_state = {
                 "user_input": user_input,
                 "table_name": "",
-                "operation_type": "",
+                "operation_type": "update",  # 默认操作类型
                 "modification_requirements": [],
                 "additional_context": "",
                 "existing_etl_code": None,
@@ -296,17 +308,20 @@ class ETLDevelopmentAgent(BaseAgent):
             # 执行工作流
             final_state = await self.workflow.ainvoke(initial_state)
             etl_info_from_state = final_state.get("etl_info")
+            operation_type = final_state.get("operation_type", "update")
 
             final_etl_code = final_state.get("final_etl_code")
             if final_etl_code:
                 self._logger.info("✅ ETL脚本开发成功!")
+                self._logger.info(f"🔄 操作类型: {operation_type}")
 
                 return AgentResponse(
                     success=True,
                     data={
                         "etl_info": {
                             **etl_info_from_state, "etl_code": final_etl_code
-                        }
+                        },
+                        "analysis": {"operation_type": operation_type}
                     }
                 )
             else:

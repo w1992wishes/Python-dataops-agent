@@ -1,7 +1,7 @@
 """
 ETL Agent 工具函数
 """
-from typing import Optional
+from typing import Optional, Dict, Any
 import asyncio
 import logging
 
@@ -93,7 +93,7 @@ GROUP BY customer_id;''',
 }
 
 
-async def get_etl_script(table_name: str) -> Optional[str]:
+async def get_etl_script(table_name: str) -> Optional[Dict[str, Any]]:
     """
     异步获取ETL脚本代码
 

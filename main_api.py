@@ -169,6 +169,10 @@ async def create_table(request: BaseRequest):
 
         if result.success and result.data:
             table_info = result.data.get("table_info", {})
+            analysis_data = result.data.get("analysis", {})
+
+            # 获取操作类型
+            operation_type = analysis_data.get("operation_type", "create")
 
             # 统一数据格式
             response_data = {
@@ -177,14 +181,14 @@ async def create_table(request: BaseRequest):
             }
 
             if table_info:
-                logger.info(f"✅ 表结构生成成功: {table_info.get('nameZh', 'N/A')}")
+                logger.info(f"✅ 表结构生成成功: {table_info.get('nameZh', 'N/A')} ({operation_type})")
             else:
-                logger.info("✅ 表结构生成成功，但无返回数据")
+                logger.info(f"✅ 表结构生成成功，但无返回数据 ({operation_type})")
 
             return TableResponse(
                 success=True,
                 data=response_data.get("table_info"),
-                operation_type="create"
+                operation_type=operation_type
             )
         else:
             logger.error(f"❌ 表结构生成失败: {result.error}")
@@ -214,6 +218,10 @@ async def create_etl(request: BaseRequest):
 
         if result.success and result.data:
             etl_script = result.data.get("etl_info", {})
+            analysis_data = result.data.get("analysis", {})
+
+            # 获取操作类型
+            operation_type = analysis_data.get("operation_type", "create")
 
             # 统一数据格式
             response_data = {
@@ -222,14 +230,14 @@ async def create_etl(request: BaseRequest):
             }
 
             if etl_script:
-                logger.info(f"✅ ETL脚本生成成功: {etl_script.get('name', 'N/A')}")
+                logger.info(f"✅ ETL脚本生成成功: {etl_script.get('name', 'N/A')} ({operation_type})")
             else:
-                logger.info("✅ ETL脚本生成成功，但无返回数据")
+                logger.info(f"✅ ETL脚本生成成功，但无返回数据 ({operation_type})")
 
             return ETLResponse(
                 success=True,
                 data=response_data.get("etl_info"),
-                operation_type="create"
+                operation_type=operation_type
             )
         else:
             logger.error(f"❌ ETL脚本生成失败: {result.error}")
