@@ -295,6 +295,7 @@ class ETLDevelopmentAgent(BaseAgent):
 
             # 执行工作流
             final_state = await self.workflow.ainvoke(initial_state)
+            etl_info_from_state = final_state.get("etl_info")
 
             final_etl_code = final_state.get("final_etl_code")
             if final_etl_code:
@@ -304,7 +305,7 @@ class ETLDevelopmentAgent(BaseAgent):
                     success=True,
                     data={
                         "etl_info": {
-                            "final_etl_code": final_etl_code,
+                            **etl_info_from_state, "etl_code": final_etl_code
                         }
                     }
                 )

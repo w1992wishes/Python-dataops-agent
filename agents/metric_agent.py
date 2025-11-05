@@ -187,10 +187,6 @@ class MetricManagementAgent(BaseAgent):
                     "metric": final_metric,
                     "existing_metric": existing_metric,
                     "analysis": analysis_result
-                },
-                metadata={
-                    "agent_type": "metric_management",
-                    "workflow_type": "langgraph"
                 }
             )
 
@@ -198,8 +194,7 @@ class MetricManagementAgent(BaseAgent):
             self._logger.error(f"💥 指标管理工作流异常: {e}")
             return AgentResponse(
                 success=False,
-                error=f"指标管理工作流异常: {str(e)}",
-                metadata={"agent_type": "metric_management", "stage": "exception"}
+                error=f"指标管理工作流异常: {str(e)}"
             )
 
     async def process_stream(self, user_input: str, **kwargs) -> AsyncGenerator[Dict[str, Any], None]:
@@ -216,7 +211,15 @@ class MetricManagementAgent(BaseAgent):
         }
 
         try:
-            # 流式执行工作流
+            # 先发送开始消息
+            yield {
+                "step": "starting",
+                "data": {"user_input": user_input},
+                "message": "🔍 开始分析您的指标管理需求...",
+                "timestamp": datetime.now().isoformat()
+            }
+
+            # 使用LangGraph的流式执行
             async for output in self.graph.astream(initial_state):
                 node_name = list(output.keys())[0]
                 node_state = output[node_name]
@@ -241,24 +244,26 @@ class MetricManagementAgent(BaseAgent):
                     analysis = node_state.get("analysis_result", {})
                     if analysis:
                         chunk["data"]["analysis"] = analysis
-                        chunk["message"] = f"需求分析完成: {analysis.get('metric_name', 'N/A')} - {analysis.get('operation_type', 'N/A')}"
+                        chunk["message"] = f"✅ 需求分析完成: {analysis.get('metric_name', 'N/A')} - {analysis.get('operation_type', 'N/A')}"
+                    else:
+                        chunk["message"] = "📝 正在分析您的需求..."
 
                 elif node_name == "query_metric":
                     existing = node_state.get("existing_metric")
                     if existing:
                         chunk["data"]["existing_metric"] = existing
-                        chunk["message"] = f"找到已存在指标: {existing.get('nameZh', 'N/A')}"
+                        chunk["message"] = f"📋 找到已存在指标: {existing.get('nameZh', 'N/A')} ({existing.get('code', 'N/A')})"
                     else:
-                        chunk["message"] = "未找到已存在指标"
+                        chunk["message"] = "ℹ️ 未找到已存在指标，将创建新指标"
 
                 elif node_name == "execute_operation":
                     final_metric = node_state.get("final_metric")
                     success = node_state.get("success", False)
                     if final_metric and success:
                         chunk["data"]["final_metric"] = final_metric
-                        chunk["message"] = f"指标处理完成: {final_metric.get('nameZh', 'N/A')}"
+                        chunk["message"] = f"🎉 指标处理完成: {final_metric.get('nameZh', 'N/A')}"
                     else:
-                        chunk["message"] = "指标处理失败"
+                        chunk["message"] = "❌ 指标处理失败"
 
                 chunk["timestamp"] = datetime.now().isoformat()
                 yield chunk
@@ -267,7 +272,7 @@ class MetricManagementAgent(BaseAgent):
             final_chunk = {
                 "step": "completed",
                 "data": {"workflow_completed": True},
-                "message": "指标管理工作流执行完成",
+                "message": "✅ 指标管理工作流执行完成",
                 "timestamp": datetime.now().isoformat()
             }
             yield final_chunk
@@ -276,7 +281,7 @@ class MetricManagementAgent(BaseAgent):
             error_chunk = {
                 "step": "error",
                 "data": {"error": str(e)},
-                "message": f"指标管理工作流异常: {str(e)}",
+                "message": f"❌ 指标管理工作流异常: {str(e)}",
                 "timestamp": datetime.now().isoformat()
             }
             yield error_chunk

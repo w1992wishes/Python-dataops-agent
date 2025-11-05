@@ -48,7 +48,6 @@ class AgentResponse:
     agent_name: str = ""
     execution_time: float = 0.0
     timestamp: str = field(default_factory=lambda: datetime.now().isoformat())
-    metadata: Dict[str, Any] = field(default_factory=dict)
 
 
 class BaseAgent(ABC):

@@ -147,15 +147,9 @@ class APITester:
 
                 if response.status == 200:
                     data = await response.json()
+                    logger.info(f"--------------------data--------------------{data}")
 
                     if data.get("success"):
-                        metric_info = data.get("metric_info", {})
-                        logger.info("🎯 [TEST] 指标管理测试:")
-                        logger.info(f"   📊 指标名称: {metric_info.get('nameZh', 'N/A')} ({metric_info.get('code', 'N/A')})")
-                        logger.info(f"   🏷️ 业务域: {metric_info.get('processDomainId', 'N/A')}")
-                        logger.info(f"   📝 业务口径: {metric_info.get('businessCaliber', 'N/A')[:50]}{'...' if len(metric_info.get('businessCaliber', '')) > 50 else ''}")
-                        logger.info(f"   📋 字段数量: {len(metric_info.get('fields', []))}")
-
                         self.log_test("指标管理", True, data)
                         return data
                     else:
@@ -390,12 +384,12 @@ class APITester:
         logger.info("\n🎯 核心功能测试")
         # await self.test_table_generation()
         # await self.test_etl_development()
-        # await self.test_metric_management()
+        await self.test_metric_management()
         # await self.test_metric_update()
 
         # 流式接口测试
-        logger.info("\n🌊 流式接口测试")
-        await self.test_metric_streaming()
+        # logger.info("\n🌊 流式接口测试")
+        # await self.test_metric_streaming()
         #await self.test_metric_query_streaming()
 
         # 统计测试结果

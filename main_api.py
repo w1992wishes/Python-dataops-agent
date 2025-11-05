@@ -32,6 +32,7 @@ class BaseResponse(BaseModel):
     success: bool = Field(..., description="请求是否成功")
     data: Optional[Dict[str, Any]] = Field(None, description="返回数据")
     error: Optional[str] = Field(None, description="错误信息")
+    operation_type: Optional[str] = Field(None, description="操作类型：create/update/query")
     timestamp: str = Field(default_factory=lambda: datetime.now().isoformat())
 
 
@@ -50,17 +51,17 @@ class MetricStreamingRequest(BaseModel):
 
 class TableResponse(BaseResponse):
     """表结构响应"""
-    table_info: Optional[Dict[str, Any]] = Field(None, description="表结构信息")
+    pass  # 使用BaseResponse的data字段存储所有数据
 
 
 class ETLResponse(BaseResponse):
     """ETL脚本响应"""
-    etl_info: Optional[Dict[str, Any]] = Field(None, description="ETL脚本信息")
+    pass  # 使用BaseResponse的data字段存储所有数据
 
 
 class MetricResponse(BaseResponse):
     """指标响应"""
-    metric_info: Optional[Dict[str, Any]] = Field(None, description="指标信息")
+    pass  # 使用BaseResponse的data字段存储所有数据
 
 
 class HealthResponse(BaseModel):
@@ -168,16 +169,22 @@ async def create_table(request: BaseRequest):
 
         if result.success and result.data:
             table_info = result.data.get("table_info", {})
+
+            # 统一数据格式
+            response_data = {
+                "result": "表结构生成成功",
+                "table_info": table_info or {}
+            }
+
             if table_info:
                 logger.info(f"✅ 表结构生成成功: {table_info.get('nameZh', 'N/A')}")
             else:
                 logger.info("✅ 表结构生成成功，但无返回数据")
-                table_info = {}
 
             return TableResponse(
                 success=True,
-                data={"result": "表结构生成成功"},
-                table_info=table_info
+                data=response_data.get("table_info"),
+                operation_type="create"
             )
         else:
             logger.error(f"❌ 表结构生成失败: {result.error}")
@@ -207,16 +214,22 @@ async def create_etl(request: BaseRequest):
 
         if result.success and result.data:
             etl_script = result.data.get("etl_info", {})
+
+            # 统一数据格式
+            response_data = {
+                "result": "ETL脚本生成成功",
+                "etl_info": etl_script or {}
+            }
+
             if etl_script:
                 logger.info(f"✅ ETL脚本生成成功: {etl_script.get('name', 'N/A')}")
             else:
                 logger.info("✅ ETL脚本生成成功，但无返回数据")
-                etl_script = {}
 
             return ETLResponse(
                 success=True,
-                data={"result": "ETL脚本生成成功"},
-                etl_info=etl_script
+                data=response_data.get("etl_info"),
+                operation_type="create"
             )
         else:
             logger.error(f"❌ ETL脚本生成失败: {result.error}")
@@ -246,16 +259,28 @@ async def create_metric(request: BaseRequest):
 
         if result.success and result.data:
             metric_data = result.data.get("metric")
+            analysis_data = result.data.get("analysis", {})
+
+            # 获取操作类型
+            operation_type = analysis_data.get("operation_type", "create")
+
+            # 统一数据格式
+            response_data = {
+                "result": "指标处理成功",
+                "metric_info": metric_data or {},
+                "analysis": analysis_data,
+                "existing_metric": result.data.get("existing_metric")
+            }
+
             if metric_data:
-                logger.info(f"✅ 指标处理成功: {metric_data.get('nameZh', 'N/A')}")
+                logger.info(f"✅ 指标处理成功: {metric_data.get('nameZh', 'N/A')} ({operation_type})")
             else:
-                logger.info("✅ 指标处理成功，但无返回数据")
-                metric_data = {}
+                logger.info(f"✅ 指标处理成功，但无返回数据 ({operation_type})")
 
             return MetricResponse(
                 success=True,
-                data={"result": "指标处理成功"},
-                metric_info=metric_data
+                data=response_data.get("metric_info"),
+                operation_type=operation_type
             )
         else:
             logger.error(f"❌ 指标处理失败: {result.error}")
