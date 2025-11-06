@@ -119,15 +119,7 @@ class ETLDevelopmentAgent(BaseAgent):
             # 转换为字典格式
             analysis_data = result.dict()
 
-            # 智能操作类型映射（类似 metric_agent）
-            operation_map = {
-                "创建": "create", "新建": "create", "生成": "create", "写一个": "create",
-                "修改": "update", "更新": "update", "变更": "update", "调整": "update", "优化": "update",
-                "查询": "query", "查看": "query", "搜索": "query", "找一下": "query", "获取": "query"
-            }
-
-            operation_text = analysis_data.get("operation_type", "update")
-            operation_type = operation_map.get(operation_text, "update")
+            operation_type = analysis_data.get("operation_type", "update")
 
             state["table_name"] = analysis_data.get("table_name", "")
             state["operation_type"] = operation_type
@@ -187,7 +179,7 @@ class ETLDevelopmentAgent(BaseAgent):
         return state
 
     async def _generate_etl(self, state) -> Dict[str, Any]:
-        """直接用LLM生成新的ETL脚本"""
+        """生成ETL脚本，保留配置部分，只修改转换逻辑"""
         user_input = state["user_input"]
         etl_info = state.get("etl_info")
         modification_requirements = state.get("modification_requirements", [])
@@ -195,91 +187,136 @@ class ETLDevelopmentAgent(BaseAgent):
         additional_context = state.get("additional_context", "")
         table_name = state.get("table_name", "")
 
-        self._logger.info("🚀 第3步: 用LLM直接生成新的ETL脚本")
+        self._logger.info("🚀 第3步: 生成ETL脚本，保留配置，修改转换逻辑")
 
         try:
-            # 构建现有ETL信息
-            existing_code_info = "" if etl_info else etl_info.get("etl_code", "")
-            if existing_code_info:
-                # 现有ETL脚本信息（保持变量引用不变）
-                existing_code_info = f"""
-现有ETL脚本：
-```sql
-{existing_code_info}
-```
+            # 解析现有ETL脚本
+            existing_etl_code = etl_info.get("etl_code", "") if etl_info else ""
 
-注意：现有脚本中的变量引用（如 $变量名）是合理的，在生成新脚本时请保留这些变量引用。
-"""
-            else:
-                existing_code_info = "未找到现有ETL脚本，需要创建新的ETL脚本。"
+            if existing_etl_code and operation_type == "update":
+                # 分离配置部分和转换部分
+                config_part, transform_part = self._parse_etl_script(existing_etl_code)
 
-            # 构建修改需求信息
-            requirements_text = ""
-            if modification_requirements:
-                requirements_text = "\n".join([f"- {req}" for req in modification_requirements])
+                self._logger.info(f"📋 识别到配置部分长度: {len(config_part)} 字符")
+                self._logger.info(f"🔄 识别到转换部分长度: {len(transform_part)} 字符")
 
-            prompt = ChatPromptTemplate.from_template("""
-你是一个资深的ETL开发工程师，需要根据用户需求{operation_type}ETL脚本。
+                # 构建修改需求信息
+                requirements_text = ""
+                if modification_requirements:
+                    requirements_text = "\n".join([f"- {req}" for req in modification_requirements])
+
+                # 生成新的转换逻辑
+                prompt = ChatPromptTemplate.from_template("""
+你是一个资深的ETL开发工程师，需要根据用户需求修改ETL脚本的转换逻辑部分。
 
 用户原始需求：{user_input}
-
-操作类型：{operation_type}
 
 具体修改需求：
 {requirements_text}
 
 额外上下文：{additional_context}
 
-{existing_code_info}
+现有转换逻辑：
+```sql
+{transform_part}
+```
 
-请根据用户需求生成完整的Hive ETL脚本，脚本应该包含：
-1. 适当的注释说明
-2. 变量设置（如果需要）
-3. 完整的INSERT OVERWRITE语句
-4. 必要的WHERE条件
-5. 合适的字段计算逻辑
-6. 处理时间戳字段
+要求：
+1. 只修改转换逻辑部分（INSERT、SELECT、WHERE等SQL语句）
+2. 保留原有的变量引用（如 $变量名）
+3. 确保新的转换逻辑满足用户的修改需求
+4. 保持SQL语法正确性
+5. 考虑性能优化
+6. 目标表名：{table_name}
 
-注意事项：
-- 确保SQL语法正确
-- 字段名要符合规范
-- 添加必要的注释
-- 考虑性能优化
-- 处理数据类型转换
-- 如果有现有脚本，请在其基础上进行修改，保留原有的变量引用
-- 如果没有现有脚本，请创建全新的ETL脚本
-- 目标表名：{table_name}
-
-请直接返回完整的Hive ETL脚本，不要包含其他解释文字。
+请只返回修改后的转换逻辑部分，不要包含配置部分，也不要包含```sql```标记。
 """)
 
-            response = await self.llm.ainvoke([
-                HumanMessage(content=prompt.format(
-                    user_input=user_input,
-                    operation_type=operation_type,
-                    requirements_text=requirements_text,
-                    additional_context=additional_context,
-                    existing_code_info=existing_code_info,
-                    table_name=table_name
-                ))
-            ])
+                response = await self.llm.ainvoke([
+                    HumanMessage(content=prompt.format(
+                        user_input=user_input,
+                        requirements_text=requirements_text,
+                        additional_context=additional_context,
+                        transform_part=transform_part,
+                        table_name=table_name
+                    ))
+                ])
 
-            # 提取ETL代码（去除可能的额外说明）
-            etl_code = response.content.strip()
+                # 提取新的转换逻辑
+                new_transform_code = response.content.strip()
 
-            # 如果响应中包含代码块标记，提取其中的代码
-            if "```sql" in etl_code:
-                code_match = re.search(r'```sql\s*(.*?)\s*```', etl_code, re.DOTALL)
-                if code_match:
-                    etl_code = code_match.group(1).strip()
-            elif "```" in etl_code:
-                code_match = re.search(r'```\s*(.*?)\s*```', etl_code, re.DOTALL)
-                if code_match:
-                    etl_code = code_match.group(1).strip()
+                # 清理可能的代码块标记
+                if "```sql" in new_transform_code:
+                    code_match = re.search(r'```sql\s*(.*?)\s*```', new_transform_code, re.DOTALL)
+                    if code_match:
+                        new_transform_code = code_match.group(1).strip()
+                elif "```" in new_transform_code:
+                    code_match = re.search(r'```\s*(.*?)\s*```', new_transform_code, re.DOTALL)
+                    if code_match:
+                        new_transform_code = code_match.group(1).strip()
 
-            state["final_etl_code"] = etl_code
+                # 组合配置部分和新的转换逻辑
+                final_etl_code = self._combine_etl_parts(config_part, new_transform_code)
+
+                self._logger.info(f"✅ ETL脚本修改完成，保留了配置部分")
+                self._logger.info(f"📄 最终代码长度: {len(final_etl_code)} 字符")
+
+            else:
+                # 创建新的ETL脚本
+                requirements_text = ""
+                if modification_requirements:
+                    requirements_text = "\n".join([f"- {req}" for req in modification_requirements])
+
+                prompt = ChatPromptTemplate.from_template("""
+你是一个资深的ETL开发工程师，需要根据用户需求创建新的ETL脚本。
+
+用户需求：{user_input}
+
+具体需求：
+{requirements_text}
+
+额外上下文：{additional_context}
+
+请创建完整的Hive ETL脚本，包含：
+1. 变量设置部分（Hive参数、日期变量等）
+2. 转换逻辑部分（INSERT OVERWRITE语句等）
+
+要求：
+- 确保SQL语法正确
+- 添加适当的注释说明
+- 考虑性能优化
+- 处理数据类型转换
+- 目标表名：{table_name}
+
+请直接返回完整的Hive ETL脚本，不要包含```sql```标记。
+""")
+
+                response = await self.llm.ainvoke([
+                    HumanMessage(content=prompt.format(
+                        user_input=user_input,
+                        requirements_text=requirements_text,
+                        additional_context=additional_context,
+                        table_name=table_name
+                    ))
+                ])
+
+                final_etl_code = response.content.strip()
+
+                # 清理可能的代码块标记
+                if "```sql" in final_etl_code:
+                    code_match = re.search(r'```sql\s*(.*?)\s*```', final_etl_code, re.DOTALL)
+                    if code_match:
+                        final_etl_code = code_match.group(1).strip()
+                elif "```" in final_etl_code:
+                    code_match = re.search(r'```\s*(.*?)\s*```', final_etl_code, re.DOTALL)
+                    if code_match:
+                        final_etl_code = code_match.group(1).strip()
+
+                self._logger.info(f"✅ 新ETL脚本创建完成")
+
+            state["final_etl_code"] = final_etl_code
             self._logger.info("✅ ETL脚本生成完成")
-            self._logger.info(f"📄 生成代码长度: {len(etl_code)} 字符")
+            self._logger.info(f"📄 生成代码长度: {len(final_etl_code)} 字符")
             self._logger.info(f"🎉 ETL开发流程完成! 操作类型: {operation_type}")
 
         except Exception as e:
@@ -288,6 +325,66 @@ class ETLDevelopmentAgent(BaseAgent):
             state["final_etl_code"] = None
 
         return state
+
+    def _parse_etl_script(self, etl_code: str) -> tuple:
+        """解析ETL脚本，分离配置部分和转换部分"""
+        lines = etl_code.split('\n')
+        config_lines = []
+        transform_lines = []
+
+        in_transform_section = False
+
+        for line in lines:
+            stripped_line = line.strip()
+
+            # 识别转换逻辑开始的标志
+            if (stripped_line.upper().startswith('INSERT') or
+                stripped_line.upper().startswith('WITH') or
+                stripped_line.upper().startswith('SELECT') or
+                stripped_line.startswith('--') and '转换' in stripped_line or
+                stripped_line.startswith('--') and 'transform' in stripped_line.lower() or
+                stripped_line.startswith('--') and 'ETL' in stripped_line):
+                in_transform_section = True
+                transform_lines.append(line)
+            # 如果已经在转换部分，继续添加
+            elif in_transform_section:
+                transform_lines.append(line)
+            # 配置部分的特征
+            elif (stripped_line.startswith('SET ') or
+                  stripped_line.startswith('ADD JAR ') or
+                  stripped_line.startswith('USE ') or
+                  stripped_line.startswith('--') and '配置' in stripped_line or
+                  stripped_line.startswith('--') and 'config' in stripped_line.lower() or
+                  stripped_line.startswith('--') and '参数' in stripped_line or
+                  stripped_line.startswith('--') and 'variable' in stripped_line.lower() or
+                  not stripped_line):  # 空行也属于配置部分
+                config_lines.append(line)
+            else:
+                # 默认情况下，不确定的内容先归为配置部分
+                if not in_transform_section:
+                    config_lines.append(line)
+                else:
+                    transform_lines.append(line)
+
+        config_part = '\n'.join(config_lines).strip()
+        transform_part = '\n'.join(transform_lines).strip()
+
+        return config_part, transform_part
+
+    def _combine_etl_parts(self, config_part: str, transform_part: str) -> str:
+        """组合配置部分和转换部分"""
+        parts = []
+
+        if config_part:
+            parts.append(config_part)
+
+        if config_part and transform_part:
+            parts.append("")  # 添加空行分隔
+
+        if transform_part:
+            parts.append(transform_part)
+
+        return '\n'.join(parts)
 
     async def process(self, user_input: str, **kwargs) -> AgentResponse:
         """处理用户输入的核心方法"""

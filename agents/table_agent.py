@@ -134,15 +134,7 @@ class TableGenerationAgent(BaseAgent):
             # 转换为字典格式
             parsed_data = result.dict()
 
-            # 智能操作类型映射（类似 metric_agent）
-            operation_map = {
-                "创建": "create", "新建": "create", "生成": "create", "建立一个": "create",
-                "修改": "update", "更新": "update", "变更": "update", "调整": "update",
-                "查询": "query", "查看": "query", "搜索": "query", "找一下": "query", "获取": "query"
-            }
-
-            operation_text = parsed_data.get("operation_type", "create")
-            operation_type = operation_map.get(operation_text, "create")
+            operation_type = parsed_data.get("operation_type", "create")
 
             state["operation_type"] = operation_type
             state["db_name"] = parsed_data.get("db_name")

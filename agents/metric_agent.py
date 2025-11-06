@@ -27,6 +27,10 @@ class MetricAnalysisModel(BaseModel):
         description="目标指标名称，如果是修改操作时指定要修改的指标"
     )
     metric_name: str = Field(
+        description="指标英文名称，指标的英文标识符，通常使用下划线分隔的小写单词",
+        examples=["monthly_active_users", "order_conversion_rate", "customer_lifetime_value", "daily_sales_amount"]
+    )
+    metric_name_zh: str = Field(
         description="指标中文名称，从用户输入中准确提取的核心指标名称",
         examples=["月度活跃用户数", "订单转化率", "客户生命周期价值", "日销售额"]
     )
@@ -83,6 +87,11 @@ class MetricAnalysisModel(BaseModel):
         description="统计时间粒度，指标统计的时间周期",
         examples=["实时", "小时", "日", "周", "月", "季度", "年"]
     )
+    unit: str = Field(
+        default="个",
+        description="指标单位，指标数值的计量单位",
+        examples=["个", "人", "元", "%", "次", "笔", "天", "小时", "GB", "MB"]
+    )
     business_caliber: str = Field(
         default="",
         description="指标业务口径，详细的业务含义说明，解释指标的实际业务意义和价值"
@@ -97,7 +106,8 @@ class MetricAnalysisModel(BaseModel):
             "example": {
                 "operation_type": "create",
                 "target_metric": "",
-                "metric_name": "月度活跃用户数",
+                "metric_name": "monthly_active_users",
+                "metric_name_zh": "月度活跃用户数",
                 "metric_type": "IA",
                 "metric_level": "T1",
                 "application_scenarios": "HIVE_OFFLINE",
@@ -109,6 +119,7 @@ class MetricAnalysisModel(BaseModel):
                 "statistical_rule": "统计当月内有登录或使用行为的去重用户数量",
                 "statistical_rule_it": "SELECT COUNT(DISTINCT user_id) FROM user_activity WHERE activity_date >= DATE_TRUNC('month', CURRENT_DATE) AND activity_type IN ('login', 'page_view', 'click')",
                 "statistical_time": "月",
+                "unit": "人",
                 "business_caliber": "衡量产品月度活跃度的重要指标，反映用户粘性和产品吸引力，用于指导运营策略和产品迭代",
                 "requirements": ["包含所有用户类型", "排除测试账号", "按自然月统计"]
             }
@@ -315,30 +326,35 @@ class MetricManagementAgent(BaseAgent):
         请根据用户输入提取以下详细信息。仔细分析用户的业务场景，提取或推断出合理的指标属性：
 
         1. operation_type: 操作类型（create/update/query）
-        2. metric_name: 指标中文名称（必填，从用户输入中准确提取）
-        3. metric_type: 指标类型（IA原子指标/IB派生指标）
+        2. metric_name: 指标英文名称（必填，基于中文名称生成的英文标识符，通常使用下划线分隔的小写单词）
+        3. metric_name_zh: 指标中文名称（必填，从用户输入中准确提取的核心指标名称）
+        4. metric_type: 指标类型（IA原子指标/IB派生指标）
            - 原子指标：直接从业务系统统计得到的原始指标，如"用户数"、"订单量"
            - 派生指标：基于其他指标计算得出的指标，如"转化率"、"人均收入"
-        4. metric_level: 指标重要等级（T1最重要/T2中等/T3一般）
+        5. metric_level: 指标重要等级（T1最重要/T2中等/T3一般）
            - T1：核心业务指标，直接影响业务决策
            - T2：重要业务指标，常规监控使用
            - T3：一般指标，辅助分析使用
-        5. application_scenarios: 应用场景（HIVE_OFFLINE离线数仓/OLAP_ONLINE在线分析）
+        6. application_scenarios: 应用场景（HIVE_OFFLINE离线数仓/OLAP_ONLINE在线分析）
            - HIVE_OFFLINE：用于离线数据分析，通常批量处理
            - OLAP_ONLINE：用于在线实时分析，需要快速响应
-        6. process_domain: 业务域ID（从上面可用业务域列表中选择最合适的）
-        7. safe_level: 安全等级（S1普通数据/S2/S3/S4/S5国密数据）
+        7. process_domain: 业务域ID（从上面可用业务域列表中选择最合适的）
+        8. safe_level: 安全等级（S1普通数据/S2/S3/S4/S5国密数据）
            - S1：普通业务数据
            - S2-S4：逐步增加敏感度的数据
            - S5：国密级敏感数据
-        8. business_owner: 业务负责人（如果用户未明确提及，请根据指标性质推断合适的负责人角色）
-        9. business_team: 业务属主团队（如"产品团队"、"运营团队"、"财务团队"等）
-        10. statistical_object: 统计的主体（如"用户"、"订单"、"商品"、"访问"、"活动"等）
-        11. statistical_rule: 统计规则（业务层面的统计逻辑，用自然语言描述）
-        12. statistical_rule_it: IT口径（技术实现的具体SQL或规则，更技术化的描述）
-        13. statistical_time: 统计时间粒度（实时、小时、日、周、月、季度、年等）
-        14. business_caliber: 业务口径描述（详细的业务含义说明，解释这个指标的实际业务意义）
-        15. requirements: 其他需求列表（用户提到的其他特殊要求）
+        9. business_owner: 业务负责人（如果用户未明确提及，请根据指标性质推断合适的负责人角色）
+        10. business_team: 业务属主团队（如"产品团队"、"运营团队"、"财务团队"等）
+        11. statistical_object: 统计的主体（如"用户"、"订单"、"商品"、"访问"、"活动"等）
+        12. statistical_rule: 统计规则（业务层面的统计逻辑，用自然语言描述）
+        13. statistical_rule_it: IT口径（技术实现的具体SQL或规则，更技术化的描述）
+        14. statistical_time: 统计时间粒度（实时、小时、日、周、月、季度、年等）
+        15. unit: 指标单位（指标数值的计量单位）
+           - 常见单位：个、人、元、%、次、笔、天、小时、GB、MB等
+           - 根据指标名称和业务场景推断合适的单位
+           - 如果用户明确提及单位则使用用户指定的单位
+        16. business_caliber: 业务口径描述（详细的业务含义说明，解释这个指标的实际业务意义）
+        17. requirements: 其他需求列表（用户提到的其他特殊要求）
 
         操作类型判断规则：
         - 包含"创建"、"新增"、"增加"、"建立一个"等词汇 → create
@@ -394,23 +410,26 @@ class MetricManagementAgent(BaseAgent):
     async def _query_metric(self, state) -> Dict[str, Any]:
         """查询指标节点"""
         analysis_data = state.get("analysis_result", {})
-        metric_name = analysis_data.get("metric_name", "")
+        metric_name_zh = analysis_data.get("metric_name_zh", "")
+        metric_name_en = analysis_data.get("metric_name", "")
 
-        self._logger.info(f"🔍 查询指标: {metric_name}")
+        # 优先使用中文名称查询，如果没有中文名再使用英文名
+        query_name = metric_name_zh if metric_name_zh else metric_name_en
+        self._logger.info(f"🔍 查询指标: {query_name}")
 
-        if not metric_name:
+        if not query_name:
             self._logger.warning("⚠️ 未提供指标名称，跳过查询")
             state["existing_metric"] = None
             return state
 
         try:
             # 根据指标中文名称查询
-            existing_metric = await query_metric_by_name_zh(metric_name)
+            existing_metric = await query_metric_by_name_zh(query_name)
 
             if existing_metric:
                 self._logger.info(f"✅ 找到现有指标: {existing_metric.get('nameZh', 'N/A')} ({existing_metric.get('code', 'N/A')})")
             else:
-                self._logger.info(f"ℹ️ 未找到指标: {metric_name}")
+                self._logger.info(f"ℹ️ 未找到指标: {query_name}")
 
             state["existing_metric"] = existing_metric
 
@@ -495,13 +514,16 @@ class MetricManagementAgent(BaseAgent):
             from datetime import datetime
             current_time = datetime.now().isoformat()
 
-            metric_name = analysis_data.get("metric_name", "")
-            if not metric_name:
-                self._logger.warning("⚠️ 缺少指标名称，无法生成Schema")
+            metric_name_zh = analysis_data.get("metric_name_zh", "")
+            metric_name_en = analysis_data.get("metric_name", "")
+
+            if not metric_name_zh:
+                self._logger.warning("⚠️ 缺少指标中文名称，无法生成Schema")
                 return None
 
-            # 生成英文标识符
-            name_en = metric_name.lower().replace(" ", "_").replace("（", "").replace("）", "").replace("(", "").replace(")", "")
+            # 如果没有英文名，根据中文名生成
+            if not metric_name_en:
+                metric_name_en = metric_name_zh.lower().replace(" ", "_").replace("（", "").replace("）", "").replace("(", "").replace(")", "")
 
             # 获取业务域并智能匹配
             process_domain = analysis_data.get("process_domain", "")
@@ -515,7 +537,7 @@ class MetricManagementAgent(BaseAgent):
             if not business_caliber:
                 stat_time = analysis_data.get("statistical_time", "待定义")
                 stat_object = analysis_data.get("statistical_object", "指标")
-                business_caliber = f"统计{stat_time}的{metric_name}，反映{stat_object}的相关业务情况"
+                business_caliber = f"统计{stat_time}的{metric_name_zh}，反映{stat_object}的相关业务情况"
 
             # 构建技术实现说明
             statistical_rule_it = analysis_data.get("statistical_rule_it", "")
@@ -524,12 +546,15 @@ class MetricManagementAgent(BaseAgent):
                 if statistical_rule:
                     statistical_rule_it = f"根据统计规则实现: {statistical_rule}"
                 else:
-                    statistical_rule_it = f"基于业务规则计算{metric_name}"
+                    statistical_rule_it = f"基于业务规则计算{metric_name_zh}"
+
+            # 智能推断指标单位
+            unit = analysis_data.get("unit", "个")
 
             # 从分析数据中获取值，如果没有则使用智能推断的默认值
             metric_data = {
-                "nameZh": metric_name,
-                "name": name_en,
+                "nameZh": metric_name_zh,
+                "name": metric_name_en,
                 "code": "",  # 新增时为空
                 "applicationScenarios": analysis_data.get("application_scenarios", "HIVE_OFFLINE"),
                 "type": analysis_data.get("metric_type", "IA"),
@@ -539,10 +564,11 @@ class MetricManagementAgent(BaseAgent):
                 "businessCaliberDesc": business_caliber,
                 "businessOwner": business_owner,
                 "businessTeam": business_team,
-                "statisticalObject": analysis_data.get("statistical_object", metric_name.split("数")[0] if "数" in metric_name else "业务对象"),
-                "statisticalRule": analysis_data.get("statistical_rule", f"统计{metric_name}的业务逻辑"),
+                "statisticalObject": analysis_data.get("statistical_object", metric_name_zh.split("数")[0] if "数" in metric_name_zh else "业务对象"),
+                "statisticalRule": analysis_data.get("statistical_rule", f"统计{metric_name_zh}的业务逻辑"),
                 "statisticalRuleIt": statistical_rule_it,
                 "statisticalTime": analysis_data.get("statistical_time", "日"),
+                "unit": unit,
                 "physicalInfoList": [] if analysis_data.get("metric_type") == "IA" else [{"metricId": ""}],
                 "id": None,
                 "create_time": current_time,
@@ -567,12 +593,14 @@ class MetricManagementAgent(BaseAgent):
             updated_metric = existing_metric.copy()
 
             # 更新各个字段，如果分析数据中有新值则使用新值，否则保留原值
-            if analysis_data.get("metric_name"):
-                updated_metric["nameZh"] = analysis_data["metric_name"]
+            if analysis_data.get("metric_name_zh"):
+                updated_metric["nameZh"] = analysis_data["metric_name_zh"]
 
-            # 英文名根据中文名生成
+            # 英文名：优先使用用户提供的，如果用户没提供则根据中文名生成
             if analysis_data.get("metric_name"):
-                updated_metric["name"] = analysis_data["metric_name"].lower().replace(" ", "_")
+                updated_metric["name"] = analysis_data["metric_name"]
+            elif analysis_data.get("metric_name_zh"):
+                updated_metric["name"] = analysis_data["metric_name_zh"].lower().replace(" ", "_")
 
             if analysis_data.get("application_scenarios"):
                 updated_metric["applicationScenarios"] = analysis_data["application_scenarios"]
@@ -611,6 +639,9 @@ class MetricManagementAgent(BaseAgent):
 
             if analysis_data.get("statistical_time"):
                 updated_metric["statisticalTime"] = analysis_data["statistical_time"]
+
+            if analysis_data.get("unit"):
+                updated_metric["unit"] = analysis_data["unit"]
 
             # 更新业务口径 - 保留原有并追加更新内容
             if analysis_data.get("business_caliber"):
