@@ -190,7 +190,12 @@ class MetricManagementAgent(BaseAgent):
             analysis_result = result.get("analysis_result")
             existing_metric = result.get("existing_metric")
 
-            self._logger.info("✅ 指标管理工作流执行完成")
+            if success:
+                metric_name = final_metric.get('nameZh', 'N/A') if final_metric else 'N/A'
+                operation_type = analysis_result.get('operation_type', 'N/A') if analysis_result else 'N/A'
+                self._logger.info(f"✅ 指标管理工作流执行完成 | 操作: {operation_type} | 指标: {metric_name}")
+            else:
+                self._logger.warning("⚠️ 指标管理工作流执行完成但未成功")
 
             return AgentResponse(
                 success=success,
@@ -202,7 +207,7 @@ class MetricManagementAgent(BaseAgent):
             )
 
         except Exception as e:
-            self._logger.error(f"💥 指标管理工作流异常: {e}")
+            self._logger.error(f"💥 指标管理工作流异常 | 错误类型: {type(e).__name__} | 错误信息: {str(e)}")
             return AgentResponse(
                 success=False,
                 error=f"指标管理工作流异常: {str(e)}"

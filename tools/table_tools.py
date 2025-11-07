@@ -1,11 +1,8 @@
 """
 数据表生成 Agent 的异步工具定义
 """
-from typing import Dict, List, Optional, Any
-import json
+from typing import Dict, Optional, Any
 import asyncio
-from models import TableInfo, Column
-
 
 # 模拟数据库存储
 MOCK_TABLE_DB = {

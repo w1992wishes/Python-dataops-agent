@@ -5,13 +5,12 @@ from abc import ABC, abstractmethod
 from typing import Dict, List, Any, Optional, Union
 from dataclasses import dataclass, field
 from enum import Enum
-import logging
 import asyncio
 import time
 from datetime import datetime
 import os
 
-logger = logging.getLogger(__name__)
+from config.logging_config import get_logger
 
 
 class AgentStatus(Enum):
@@ -57,7 +56,7 @@ class BaseAgent(ABC):
         """初始化Agent"""
         self.config = config
         self.status = AgentStatus.IDLE
-        self._logger = logging.getLogger(f"{__name__}.{config.name}")
+        self._logger = get_logger(f"{__name__}.{config.name}")
 
         self._logger.info(f"🤖 [{config.name}] 初始化Agent...")
         self._logger.info(f"📋 版本: {config.version}")

@@ -56,11 +56,14 @@ def setup_logging(
 
     # 日志格式
     detailed_format = (
-        "%(asctime)s | %(levelname)-8s | %(name)-20s | "
-        "%(funcName)-15s:%(lineno)-4d | %(message)s"
+        "%(asctime)s.%(msecs)03d | %(levelname)-8s | %(name)-25s | "
+        "%(pathname)s:%(lineno)-4d:%(funcName)-15s | %(message)s"
     )
 
-    simple_format = "%(asctime)s | %(levelname)-8s | %(message)s"
+    simple_format = (
+        "%(asctime)s.%(msecs)03d | %(levelname)-8s | %(name)-25s | "
+        "%(filename)s:%(lineno)-4d:%(funcName)-15s | %(message)s"
+    )
 
     date_format = "%Y-%m-%d %H:%M:%S"
 

@@ -2,12 +2,10 @@
 指标管理工具函数
 """
 import asyncio
-import json
-import logging
 from typing import Dict, List, Optional, Any
-from datetime import datetime
 
-logger = logging.getLogger(__name__)
+from config.logging_config import get_logger
+logger = get_logger(__name__)
 
 
 # 模拟指标数据库 - 使用新的MetricSchema格式

@@ -8,7 +8,6 @@ from fastapi.responses import StreamingResponse
 from contextlib import asynccontextmanager
 from pydantic import BaseModel, Field
 from typing import Dict, Any, Optional
-import logging
 import json
 from datetime import datetime
 
@@ -16,8 +15,9 @@ from datetime import datetime
 from agents import get_agent_manager
 
 # 配置日志
-logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger(__name__)
+from config.logging_config import get_logger, setup_logging
+setup_logging(level="INFO", console_output=True)
+logger = get_logger(__name__)
 
 
 # ========== 数据模型 ==========

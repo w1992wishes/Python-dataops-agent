@@ -3,7 +3,8 @@ ETL Agent 工具函数
 """
 from typing import Optional, Dict, Any
 import asyncio
-import logging
+from config.logging_config import get_logger
+logger = get_logger(__name__)
 
 # 模拟Hive ETL脚本数据库
 MOCK_ETL_DB = {

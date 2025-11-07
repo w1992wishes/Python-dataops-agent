@@ -4,13 +4,13 @@ ETL开发Agent - 极简版本
 """
 from typing import Dict, List, Any, Optional
 import re
-from datetime import datetime
 from langchain_core.messages import HumanMessage
 from langchain_core.prompts import ChatPromptTemplate
 from langchain_core.output_parsers import PydanticOutputParser
 from pydantic import BaseModel, Field
 
 from .base_agent import BaseAgent, AgentConfig, AgentResponse
+from config.logging_config import get_logger
 from tools import get_etl_script
 
 
