@@ -2,9 +2,10 @@
 Models模块 - 定义所有数据模型
 """
 from .table import TableInfo, Column, LevelType, TableType, TableProp, ColProp, DataType, ColType
-from .metric import (
+from .metric_schemas import (
     MetricField, MetricOperationType,
-    ApplicationScenarios, MetricType, MetricLevel, SafeLevel, PhysicalInfo
+    ApplicationScenarios, MetricType, MetricLevel, SafeLevel, PhysicalInfo, FieldInfo,
+    MetricInfo, MetricOperationResult
 )
 
 __all__ = [
@@ -27,5 +28,8 @@ __all__ = [
     'MetricType',
     'MetricLevel',
     'SafeLevel',
-    'PhysicalInfo'
+    'PhysicalInfo',
+    'FieldInfo',
+    'MetricInfo',
+    'MetricOperationResult'
 ]

@@ -1,6 +1,6 @@
 """
 LangGraph 智能数据开发平台 API
-精简版本 - 只包含指标、表结构、ETL三个核心功能 + 流式输出
+只包含指标、表结构、ETL三个核心功能 + 流式输出
 """
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
@@ -259,9 +259,9 @@ async def create_metric(request: BaseRequest):
     try:
         logger.info(f"📊 收到指标管理请求: {request.user_input[:100]}...")
 
-        # 执行指标管理Agent
+        # 执行指标管理React Agent
         result = await agent_manager.execute_agent(
-            agent_name="metric_management",
+            agent_name="metric_management_react",
             user_input=request.user_input
         )
 
@@ -310,11 +310,11 @@ async def create_metric_stream(request: MetricStreamingRequest):
         try:
             logger.info(f"📊 收到指标管理流式请求: {request.user_input[:100]}...")
 
-            # 获取指标管理Agent实例
-            metric_agent = agent_manager.get_agent_instance("metric_management")
+            # 获取指标管理React Agent实例
+            metric_agent = agent_manager.get_agent_instance("metric_management_react")
             if not metric_agent:
                 # 尝试创建Agent实例
-                metric_agent = await agent_manager.create_agent("metric_management")
+                metric_agent = await agent_manager.create_agent("metric_management_react")
                 if not metric_agent:
                     yield f"data: {json.dumps({'step': 'error', 'error': '指标管理Agent未初始化', 'timestamp': datetime.now().isoformat()})}\n\n"
                     return
