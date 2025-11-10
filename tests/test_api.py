@@ -144,7 +144,27 @@ class APITester:
                     logger.info(f"--------------------data--------------------{data}")
 
                     if data.get("success"):
-                        self.log_test("指标管理", True, data)
+                        # 提取关键信息用于日志记录
+                        operation_type = data.get("operation_type", "N/A")
+                        metric_data = data.get("data", {})
+
+                        # 获取指标信息
+                        metric_info = metric_data.get("metric_info") or metric_data.get("existing_metric")
+                        metric_name = metric_info.get("nameZh", "N/A") if metric_info else "N/A"
+
+                        # 获取状态和消息
+                        status = metric_data.get("status", "N/A")
+                        message = metric_data.get("message", "无消息")
+
+                        result_info = {
+                            "operation_type": operation_type,
+                            "status": status,
+                            "message": message,
+                            "metric_name": metric_name,
+                            "has_metric_info": bool(metric_info)
+                        }
+
+                        self.log_test("指标管理", True, result_info)
                         return data
                     else:
                         self.log_test("指标管理", False, error=data.get("error", "处理失败"))

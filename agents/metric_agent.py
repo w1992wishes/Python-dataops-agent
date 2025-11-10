@@ -22,7 +22,14 @@ from config.react_agent_prompts import (
 # 指标查询工具
 @tool
 async def query_metric_tool(metric_name: str) -> Dict[str, Any]:
-    """查询指定名称的指标是否存在
+    """
+    **必须使用的工具**：查询指标是否存在
+
+    使用场景：
+    - 用户提到任何指标名称时必须调用此工具
+    - 创建指标前检查是否已存在
+    - 修改指标前检查原指标是否存在
+    - 查询指标时获取指标信息
 
     Args:
         metric_name: 指标名称（中文或英文）
@@ -51,29 +58,6 @@ async def query_metric_tool(metric_name: str) -> Dict[str, Any]:
             "metric": None
         }
 
-
-@tool
-async def get_domains_tool() -> Dict[str, Any]:
-    """获取可用的业务域列表
-
-    Returns:
-        业务域信息列表
-    """
-    try:
-        domains = await get_metric_domains()
-        return {
-            "success": True,
-            "message": "获取业务域列表成功",
-            "domains": domains
-        }
-    except Exception as e:
-        return {
-            "success": False,
-            "message": f"获取业务域列表失败: {str(e)}",
-            "domains": []
-        }
-
-
 class MetricManagementAgent(BaseAgent):
     """指标管理Agent - 使用React Agent"""
 
@@ -85,7 +69,7 @@ class MetricManagementAgent(BaseAgent):
         self.result_parser = PydanticOutputParser(pydantic_object=MetricOperationResult)
 
         # 准备工具列表
-        tools = [query_metric_tool, get_domains_tool]
+        tools = [query_metric_tool]
 
         # 动态生成完整的系统提示词
         format_instructions = self.result_parser.get_format_instructions()
@@ -120,6 +104,18 @@ class MetricManagementAgent(BaseAgent):
             # 获取最后的回复消息
             last_message = response["messages"][-1]
             agent_reply = last_message.content
+
+            # 调试：记录Agent的完整响应历史
+            self._logger.info("🔍 Agent响应历史:")
+            for i, msg in enumerate(response["messages"][-5:]):  # 只记录最近5条消息
+                msg_type = msg.__class__.__name__
+                if hasattr(msg, 'content'):
+                    content_preview = msg.content[:100] + "..." if len(msg.content) > 100 else msg.content
+                    self._logger.info(f"  {i+1}. [{msg_type}]: {content_preview}")
+                elif hasattr(msg, 'name'):  # tool call
+                    self._logger.info(f"  {i+1}. [Tool Call]: {msg.name} with args: {getattr(msg, 'args', {})}")
+                else:
+                    self._logger.info(f"  {i+1}. [{msg_type}]: {str(msg)[:100]}")
 
             # 直接解析Agent的结构化输出
             try:

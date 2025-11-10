@@ -266,28 +266,44 @@ async def create_metric(request: BaseRequest):
         )
 
         if result.success and result.data:
-            metric_data = result.data.get("metric")
-            analysis_data = result.data.get("analysis", {})
+            # 使用React Agent的新数据结构
+            operation_result = result.data.get("operation_result", {})
+            agent_reply = result.data.get("agent_reply", "")
 
-            # 获取操作类型
-            operation_type = analysis_data.get("operation_type", "create")
+            # 从operation_result中提取信息
+            operation_type = operation_result.get("operation_type", "create")
+            status = operation_result.get("status", "success")
+            message = operation_result.get("message", "")
+            metric_info = operation_result.get("metric_info")
+            existing_metric = operation_result.get("existing_metric")
+
+            logger.info(f"📊 React Agent结果: {operation_type} - {status} - {message}")
 
             # 统一数据格式
             response_data = {
-                "result": "指标处理成功",
-                "metric_info": metric_data or {},
-                "analysis": analysis_data,
-                "existing_metric": result.data.get("existing_metric")
+                "operation_type": operation_type,
+                "status": status,
+                "message": message,
+                "metric_info": metric_info,
+                "existing_metric": existing_metric,
+                "agent_reply": agent_reply
             }
 
-            if metric_data:
-                logger.info(f"✅ 指标处理成功: {metric_data.get('nameZh', 'N/A')} ({operation_type})")
+            # 根据操作类型和状态确定实际返回的指标信息
+            final_metric_info = None
+            if metric_info:
+                final_metric_info = metric_info
+            elif existing_metric:
+                final_metric_info = existing_metric
+
+            if final_metric_info:
+                logger.info(f"✅ 指标处理成功: {final_metric_info.get('nameZh', 'N/A')} ({operation_type})")
             else:
-                logger.info(f"✅ 指标处理成功，但无返回数据 ({operation_type})")
+                logger.info(f"✅ 指标处理完成，但无指标数据返回 ({operation_type} - {status})")
 
             return MetricResponse(
                 success=True,
-                data=response_data.get("metric_info"),
+                data=response_data,
                 operation_type=operation_type
             )
         else:
