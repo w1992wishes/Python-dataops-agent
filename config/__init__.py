@@ -1,9 +1,14 @@
 """
-Config模块 - 配置管理
+配置模块
 """
-from .logging_config import setup_logging, get_logger
+from .metric_prompts import (
+    METRIC_ANALYSIS_PROMPT,
+)
+from .table_prompts import (
+    TABLE_ANALYSIS_PROMPT,
+)
 
 __all__ = [
-    'setup_logging',
-    'get_logger'
+    "METRIC_ANALYSIS_PROMPT",
+    "TABLE_ANALYSIS_PROMPT",
 ]

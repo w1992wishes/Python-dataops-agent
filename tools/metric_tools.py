@@ -100,10 +100,8 @@ async def query_metric_by_name_zh(metric_name_zh: str) -> Optional[Dict[str, Any
 
     return result
 
-async def get_metric_domains() -> List[Dict[str, Any]]:
+def get_metric_domains() -> List[Dict[str, Any]]:
     """获取业务域列表"""
-    # 模拟异步查询延迟
-    await asyncio.sleep(0.05)
     return [
         {"id": "domain_001", "name": "财务域", "nameZh": "财务"},
         {"id": "domain_002", "name": "用户域", "nameZh": "用户"},

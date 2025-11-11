@@ -259,14 +259,14 @@ async def create_metric(request: BaseRequest):
     try:
         logger.info(f"📊 收到指标管理请求: {request.user_input[:100]}...")
 
-        # 执行指标管理React Agent
+        # 执行指标管理工作流
         result = await agent_manager.execute_agent(
-            agent_name="metric_management_react",
+            agent_name="metric_management",
             user_input=request.user_input
         )
 
         if result.success and result.data:
-            # 使用React Agent的新数据结构
+            # 使用LangGraph工作流的数据结构
             operation_result = result.data.get("operation_result", {})
             agent_reply = result.data.get("agent_reply", "")
 
@@ -277,7 +277,7 @@ async def create_metric(request: BaseRequest):
             metric_info = operation_result.get("metric_info")
             existing_metric = operation_result.get("existing_metric")
 
-            logger.info(f"📊 React Agent结果: {operation_type} - {status} - {message}")
+            logger.info(f"📊 工作流结果: {operation_type} - {status} - {message}")
 
             # 统一数据格式
             response_data = {
@@ -326,11 +326,11 @@ async def create_metric_stream(request: MetricStreamingRequest):
         try:
             logger.info(f"📊 收到指标管理流式请求: {request.user_input[:100]}...")
 
-            # 获取指标管理React Agent实例
-            metric_agent = agent_manager.get_agent_instance("metric_management_react")
+            # 获取指标管理工作流Agent实例
+            metric_agent = agent_manager.get_agent_instance("metric_management")
             if not metric_agent:
                 # 尝试创建Agent实例
-                metric_agent = await agent_manager.create_agent("metric_management_react")
+                metric_agent = await agent_manager.create_agent("metric_management")
                 if not metric_agent:
                     yield f"data: {json.dumps({'step': 'error', 'error': '指标管理Agent未初始化', 'timestamp': datetime.now().isoformat()})}\n\n"
                     return

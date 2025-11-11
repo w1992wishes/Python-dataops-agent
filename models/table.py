@@ -58,6 +58,7 @@ class Column(BaseModel):
     metrics: Optional[List[MetricCol]] = Field(None, description="关联的指标列表,仅指标字段有效，且可选")
 
 class TableInfo(BaseModel):
+    id: Optional[str] = Field(default=None, description="数据表ID，新增时为空，修改时必填")
     """数据表完整信息模型"""
     name: str = Field(..., description="表英文名称")
     nameZh: str = Field(..., description="表中文名称")

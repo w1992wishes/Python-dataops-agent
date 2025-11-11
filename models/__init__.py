@@ -5,7 +5,10 @@ from .table import TableInfo, Column, LevelType, TableType, TableProp, ColProp, 
 from .metric_schemas import (
     MetricField, MetricOperationType,
     ApplicationScenarios, MetricType, MetricLevel, SafeLevel, PhysicalInfo, FieldInfo,
-    MetricInfo, MetricOperationResult
+    MetricInfo, MetricAnalysisResult, MetricOperationResult
+)
+from .table_schemas import (
+    TableOperationType, TableAnalysisResult, TableOperationResult
 )
 
 __all__ = [
@@ -31,5 +34,11 @@ __all__ = [
     'PhysicalInfo',
     'FieldInfo',
     'MetricInfo',
-    'MetricOperationResult'
+    'MetricAnalysisResult',
+    'MetricOperationResult',
+
+    # Table operation models
+    'TableOperationType',
+    'TableAnalysisResult',
+    'TableOperationResult'
 ]
