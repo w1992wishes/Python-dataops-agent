@@ -60,10 +60,7 @@ class TableDDLService:
             self.logger.info(f"📄 步骤2: 获取DDL内容")
             try:
                 ddl_content = await self.query_table_ddl_tool(
-                    dbName=db_name,
-                    id=table_info["id"],
-                    levelType=table_info["levelType"],
-                    name=table_name
+                    table_name=table_name
                 )
 
                 self.logger.info(f"✅ DDL查询成功")

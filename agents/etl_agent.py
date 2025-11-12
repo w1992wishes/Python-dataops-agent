@@ -15,7 +15,7 @@ from langgraph.graph.message import add_messages
 from .base_agent import BaseAgent, AgentConfig, AgentResponse
 from models.etl_schemas import ETLOperationResult
 from tools.etl_tools import get_etl_script
-from tools.table_tools import get_table_ddl_by_name
+from tools.table_tools import query_table_ddl
 from config.etl_prompts import ETL_MODIFICATION_PROMPT, ETL_CREATION_PROMPT
 
 
@@ -68,7 +68,7 @@ class ETLManagementAgent(BaseAgent):
 
             # 并行调用两个工具
             etl_task = get_etl_script(table_name)
-            ddl_task = get_table_ddl_by_name(table_name)
+            ddl_task = query_table_ddl(table_name)
 
             # 等待两个工具完成
             etl_info, ddl_content = await asyncio.gather(
@@ -78,8 +78,7 @@ class ETLManagementAgent(BaseAgent):
             # 处理ETL查询结果
             if isinstance(etl_info, dict):
                 state["etl_info"] = etl_info
-                self._logger.info(f"✅ [查询工具节点] 找到ETL脚本: {etl_info.get('description', '无描述')}")
-                self._logger.info(f"📊 [查询工具节点] 源表: {etl_info.get('source_table', 'N/A')}")
+                self._logger.info(f"📊 [查询工具节点] 找到etl脚本")
             elif isinstance(etl_info, Exception):
                 self._logger.warning(f"⚠️ [查询工具节点] ETL查询异常: {str(etl_info)}")
                 state["etl_info"] = None
@@ -213,16 +212,26 @@ class ETLManagementAgent(BaseAgent):
 
             if result.get("success"):
                 final_result = result.get("final_result")
+                etl_info = result.get("etl_info")
+
                 self._logger.info(f"🎉 ETL管理工作流执行成功!")
                 self._logger.info(f"🔄 操作类型: {final_result.operation_type}")
                 self._logger.info(f"📊 操作状态: {final_result.status}")
                 self._logger.info(f"💬 结果消息: {final_result.message}")
 
+                # 构建完整返回数据
+                response_data = {
+                    "operation_result": final_result.model_dump()
+                }
+
+                # 添加ETL工具查询的完整信息
+                if etl_info:
+                    response_data["etl_info"] = etl_info
+                    self._logger.info(f"📄 ETL信息: rel_id={etl_info.get('rel_id')}, target_table={etl_info.get('target_table')}")
+
                 return AgentResponse(
                     success=True,
-                    data={
-                        "operation_result": final_result.model_dump()
-                    }
+                    data=response_data
                 )
             else:
                 final_result = result.get("final_result")

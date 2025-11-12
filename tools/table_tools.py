@@ -106,45 +106,7 @@ async def query_table(db_name: str, name: str) -> Optional[Dict[str, Any]]:
     return None
 
 
-async def query_table_ddl(dbName: str, id: str, levelType: str, name: str) -> str:
-    """
-    异步查询表的DDL内容
-
-    Args:
-        dbName: 数据库名称
-        id: 表ID（必填）
-        levelType: 表层级类型（必填）
-        name: 表名称（必填）
-
-    Returns:
-        DDL内容字符串
-    """
-    # 模拟异步数据库查询
-    await asyncio.sleep(0.01)
-
-    # 验证必填参数
-    if not all([dbName, id, levelType, name]):
-        raise ValueError("缺少必填参数：dbName, id, levelType, name")
-
-    # 查询DDL内容
-    if id in MOCK_DDL_DB:
-        return MOCK_DDL_DB[id]["ddl_content"]
-    else:
-        # 如果没有找到DDL，返回一个模拟的DDL
-        mock_ddl = f"""
-CREATE TABLE `{name}` (
-  `id` string COMMENT '主键',
-  `name` string COMMENT '名称',
-  `create_time` date COMMENT '创建时间'
-) COMMENT '{name}表'
-PARTITIONED BY (create_time)
-STORED AS ORC;
-        """.strip()
-
-        return mock_ddl
-
-
-async def get_table_ddl_by_name(table_name: str) -> str:
+async def query_table_ddl(table_name: str) -> str:
     """
     根据表名直接获取DDL代码
 

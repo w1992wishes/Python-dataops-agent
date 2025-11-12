@@ -10,12 +10,12 @@ logger = get_logger(__name__)
 MOCK_ETL_DB = {
     "policy_renewal": {
         "name": "policy_renewal",
-        "description": "保费续签ETL脚本",
+        "version_id": "version_id",
         "source_table": "policy_renewal_source",
         "target_table": "policy_renewal_target",
-        "script_type": "hive_sql",
-        "database": "insurance_dw",
-        "code": '''-- 保费续签数据ETL脚本
+        "rel_id": "rel_id",
+        "database_name": "insurance_dw",
+        "etl_code": '''-- 保费续签数据ETL脚本
 INSERT OVERWRITE TABLE insurance_dw.policy_renewal_target
 SELECT
     policy_id,
@@ -47,49 +47,6 @@ FROM insurance_dw.policy_renewal_source
 WHERE renewal_date >= DATE_SUB(CURRENT_DATE, 30);''',
         "created_at": "2024-10-31T10:00:00",
         "updated_at": "2024-10-31T10:00:00"
-    },
-    "customer_profile": {
-        "name": "customer_profile",
-        "description": "客户画像ETL脚本",
-        "source_table": "customer_info",
-        "target_table": "customer_profile",
-        "script_type": "hive_sql",
-        "database": "insurance_dw",
-        "code": '''-- 客户画像数据ETL脚本
-INSERT OVERWRITE TABLE insurance_dw.customer_profile
-SELECT
-    customer_id,
-    COUNT(*) AS policy_count,
-    SUM(premium_amount) AS total_premium,
-    AVG(premium_amount) AS avg_premium,
-    MAX(premium_amount) AS max_premium,
-    MIN(premium_amount) AS min_premium,
-    current_timestamp() AS process_time
-FROM insurance_dw.customer_info
-GROUP BY customer_id;''',
-        "select_statement": '''SELECT
-    customer_id,
-    COUNT(*) AS policy_count,
-    SUM(premium_amount) AS total_premium,
-    AVG(premium_amount) AS avg_premium,
-    MAX(premium_amount) AS max_premium,
-    MIN(premium_amount) AS min_premium,
-    current_timestamp() AS process_time
-FROM insurance_dw.customer_info
-GROUP BY customer_id''',
-        "insert_statement": '''INSERT OVERWRITE TABLE insurance_dw.customer_profile
-SELECT
-    customer_id,
-    COUNT(*) AS policy_count,
-    SUM(premium_amount) AS total_premium,
-    AVG(premium_amount) AS avg_premium,
-    MAX(premium_amount) AS max_premium,
-    MIN(premium_amount) AS min_premium,
-    current_timestamp() AS process_time
-FROM insurance_dw.customer_info
-GROUP BY customer_id;''',
-        "created_at": "2024-10-31T10:00:00",
-        "updated_at": "2024-10-31T10:00:00"
     }
 }
 
@@ -111,14 +68,12 @@ async def get_etl_script(table_name: str) -> Optional[Dict[str, Any]]:
     for script_name, script_info in MOCK_ETL_DB.items():
         if script_info["target_table"] == table_name or script_name == table_name:
             return {
-                "etl_code": script_info.get("code"),
-                "source_table": script_info.get("source_table"),
+                "etl_code": script_info.get("etl_code"),
+                "rel_id": script_info.get("rel_id"),
                 "target_table": script_info.get("target_table"),
-                "database": script_info.get("database"),
-                "description": script_info.get("description"),
-                "script_type": script_info.get("script_type"),
-                "created_at": script_info.get("created_at"),
-                "updated_at": script_info.get("updated_at")
+                "database_name": script_info.get("database_name"),
+                "version_id": script_info.get("version_id"),
+                "rel_type": 'RS'
             }
 
     return None

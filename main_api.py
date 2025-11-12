@@ -38,7 +38,9 @@ class BaseResponse(BaseModel):
     data: Optional[Dict[str, Any]] = Field(None, description="返回数据")
     error: Optional[str] = Field(None, description="错误信息")
     operation_type: Optional[str] = Field(None, description="操作类型：create/update/query")
-    timestamp: str = Field(default_factory=lambda: datetime.now().isoformat())
+    entity_type: Optional[str] = Field(None, description="相应的实体类型")
+    timestamp: str = Field(default_factory=lambda: datetime.now().isoformat()),
+    message: Optional[str] = Field(None, description="操作消息")
 
 
 class StreamingChunk(BaseModel):
@@ -163,9 +165,6 @@ app.add_middleware(
 # Agent管理器
 agent_manager = get_agent_manager()
 
-logger.info("🚀 LangGraph API 初始化完成 - 精简版")
-
-
 # ========== 核心接口 ==========
 
 @app.post("/api/table", response_model=TableResponse)
@@ -192,12 +191,6 @@ async def create_table(request: BaseRequest):
             # 获取操作类型
             operation_type = analysis_data.get("operation_type", "create")
 
-            # 统一数据格式
-            response_data = {
-                "result": "表结构生成成功",
-                "table_info": table_info or {}
-            }
-
             if table_info:
                 logger.info(f"✅ 表结构生成成功: {table_info.get('nameZh', 'N/A')} ({operation_type})")
             else:
@@ -205,7 +198,7 @@ async def create_table(request: BaseRequest):
 
             return TableResponse(
                 success=True,
-                data=response_data.get("table_info"),
+                data=table_info or {},
                 operation_type=operation_type
             )
         else:
@@ -213,7 +206,7 @@ async def create_table(request: BaseRequest):
             raise HTTPException(status_code=500, detail=result.error or "表结构生成失败")
 
     except Exception as e:
-        logger.error(f"❌ 表结构生成异常: {str(e)}")
+        logger.error(f"❌ 表结构生成异常: {str(traceback.format_exc())}")
         raise HTTPException(status_code=500, detail=f"表结构生成异常: {str(e)}")
 
 
@@ -250,15 +243,11 @@ async def create_etl(request: ETLRequest):
 
             # 构建响应数据
             response_data = {
-                "operation_type": operation_type,
-                "status": status,
-                "message": message,
                 "table_name": request.table_name,
                 "etl_code": modified_etl_code,
                 "changes_summary": changes_summary,
                 "ddl_changes": operation_result.get("ddl_changes"),
                 "execution_time": operation_result.get("execution_time"),
-                "llm_tokens_used": operation_result.get("llm_tokens_used")
             }
 
             if modified_etl_code:
@@ -271,7 +260,10 @@ async def create_etl(request: ETLRequest):
 
             return ETLResponse(
                 success=True,
-                data=response_data
+                data=response_data,
+                entity_type='DEV_ETL',
+                operation_type=operation_type,
+                message=message
             )
         else:
             logger.error(f"❌ ETL处理失败: {result.error}")
@@ -303,7 +295,6 @@ async def create_metric(request: BaseRequest):
         if result.success and result.data:
             # 使用LangGraph工作流的数据结构
             operation_result = result.data.get("operation_result", {})
-            agent_reply = result.data.get("agent_reply", "")
 
             # 从operation_result中提取信息
             operation_type = operation_result.get("operation_type", "create")
@@ -313,16 +304,6 @@ async def create_metric(request: BaseRequest):
             existing_metric = operation_result.get("existing_metric")
 
             logger.info(f"📊 工作流结果: {operation_type} - {status} - {message}")
-
-            # 统一数据格式
-            response_data = {
-                "operation_type": operation_type,
-                "status": status,
-                "message": message,
-                "metric_info": metric_info,
-                "existing_metric": existing_metric,
-                "agent_reply": agent_reply
-            }
 
             # 根据操作类型和状态确定实际返回的指标信息
             final_metric_info = None
@@ -338,8 +319,10 @@ async def create_metric(request: BaseRequest):
 
             return MetricResponse(
                 success=True,
-                data=response_data,
-                operation_type=operation_type
+                data=final_metric_info,
+                operation_type=operation_type,
+                entity_type='MR',
+                message=message
             )
         else:
             logger.error(f"❌ 指标处理失败: {result.error}")
