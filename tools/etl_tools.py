@@ -96,13 +96,13 @@ GROUP BY customer_id;''',
 
 async def get_etl_script(table_name: str) -> Optional[Dict[str, Any]]:
     """
-    异步获取ETL脚本代码
+    异步获取ETL脚本完整信息
 
     Args:
         table_name: 表名
 
     Returns:
-        ETL脚本代码字符串，如果不存在则返回None
+        ETL脚本完整信息，如果不存在则返回None
     """
     # 模拟异步查询
     await asyncio.sleep(0.01)
@@ -110,11 +110,18 @@ async def get_etl_script(table_name: str) -> Optional[Dict[str, Any]]:
     # 查找匹配的脚本
     for script_name, script_info in MOCK_ETL_DB.items():
         if script_info["target_table"] == table_name or script_name == table_name:
-            return script_info.get("code")
+            return {
+                "etl_code": script_info.get("code"),
+                "source_table": script_info.get("source_table"),
+                "target_table": script_info.get("target_table"),
+                "database": script_info.get("database"),
+                "description": script_info.get("description"),
+                "script_type": script_info.get("script_type"),
+                "created_at": script_info.get("created_at"),
+                "updated_at": script_info.get("updated_at")
+            }
 
     return None
-
-
 
 
 # 导出工具列表

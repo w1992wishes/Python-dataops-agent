@@ -10,6 +10,12 @@ from .metric_schemas import (
 from .table_schemas import (
     TableOperationType, TableAnalysisResult, TableOperationResult
 )
+from .ddl_schemas import (
+    TableDDLRequest, TableDDLResponse, TableDDLResult, APIErrorResponse
+)
+from .etl_schemas import (
+    ETLOperationResult
+)
 
 __all__ = [
     # Table models
@@ -40,5 +46,14 @@ __all__ = [
     # Table operation models
     'TableOperationType',
     'TableAnalysisResult',
-    'TableOperationResult'
+    'TableOperationResult',
+
+    # DDL models
+    'TableDDLRequest',
+    'TableDDLResponse',
+    'TableDDLResult',
+    'APIErrorResponse',
+
+    # ETL models
+    'ETLOperationResult'
 ]

@@ -96,6 +96,7 @@ class APITester:
         """测试ETL脚本开发"""
         try:
             payload = {
+                "table_name": "policy_renewal",
                 "user_input": "为订单表创建一个ETL脚本，需要将用户表和订单表关联，计算每个用户的总消费金额和订单数量，结果写入用户消费汇总表"
             }
 
@@ -397,8 +398,8 @@ class APITester:
         # 核心功能测试
         logger.info("\n🎯 核心功能测试")
         #await self.test_table_generation()
-        # await self.test_etl_development()
-        await self.test_metric_management()
+        await self.test_etl_development()
+        # await self.test_metric_management()
         # await self.test_metric_update()
 
         # 流式接口测试

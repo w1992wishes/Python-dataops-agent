@@ -14,11 +14,16 @@ from datetime import datetime
 # 导入Agent管理系统
 from agents import get_agent_manager
 
+# 导入表DDL查询服务
+from services.table_ddl_service import table_ddl_service
+from models.ddl_schemas import TableDDLRequest, TableDDLResult
+
 # 配置日志
 from config.logging_config import get_logger, setup_logging
 setup_logging(level="INFO", console_output=True)
 logger = get_logger(__name__)
 
+import traceback
 
 # ========== 数据模型 ==========
 
@@ -52,6 +57,19 @@ class MetricStreamingRequest(BaseModel):
 class TableResponse(BaseResponse):
     """表结构响应"""
     pass  # 使用BaseResponse的data字段存储所有数据
+
+
+class ETLRequest(BaseRequest):
+    """ETL脚本请求模型"""
+    table_name: str = Field(..., description="目标表名")
+
+    class Config:
+        json_schema_extra = {
+            "example": {
+                "user_input": "用户表新增了user_age字段，请修改ETL代码，添加年龄字段的数据处理",
+                "table_name": "user_table"
+            }
+        }
 
 
 class ETLResponse(BaseResponse):
@@ -200,52 +218,69 @@ async def create_table(request: BaseRequest):
 
 
 @app.post("/api/etl", response_model=ETLResponse)
-async def create_etl(request: BaseRequest):
+async def create_etl(request: ETLRequest):
     """
-    通过自然语言生成ETL脚本信息
+    通过自然语言和表名生成/修改ETL脚本
 
-    输入：描述ETL需求的自然语言
-    输出：包含源表、目标表、转换逻辑、SQL脚本等ETL信息
+    输入：用户需求描述 + 目标表名
+    输出：基于DDL变更的智能ETL代码
     """
     try:
-        logger.info(f"📜 收到ETL脚本生成请求: {request.user_input[:100]}...")
+        logger.info(f"📜 收到ETL脚本请求: {request.table_name}")
+        logger.info(f"📝 用户需求: {request.user_input[:100]}...")
 
-        # 执行ETL开发Agent
+        # 执行新的ETL管理Agent（三步工作流）
         result = await agent_manager.execute_agent(
-            agent_name="etl_development",
-            user_input=request.user_input
+            agent_name="etl_management",
+            user_input=request.user_input,
+            table_name=request.table_name
         )
 
         if result.success and result.data:
-            etl_script = result.data.get("etl_info", {})
-            analysis_data = result.data.get("analysis", {})
+            operation_result = result.data.get("operation_result", {})
 
-            # 获取操作类型
-            operation_type = analysis_data.get("operation_type", "create")
+            # 提取关键信息
+            operation_type = operation_result.get("operation_type", "create")
+            status = operation_result.get("status", "success")
+            message = operation_result.get("message", "")
+            modified_etl_code = operation_result.get("modified_etl_code")
+            changes_summary = operation_result.get("changes_summary", [])
 
-            # 统一数据格式
+            logger.info(f"📊 ETL工作流结果: {operation_type} - {status} - {message}")
+
+            # 构建响应数据
             response_data = {
-                "result": "ETL脚本生成成功",
-                "etl_info": etl_script or {}
+                "operation_type": operation_type,
+                "status": status,
+                "message": message,
+                "table_name": request.table_name,
+                "etl_code": modified_etl_code,
+                "changes_summary": changes_summary,
+                "ddl_changes": operation_result.get("ddl_changes"),
+                "execution_time": operation_result.get("execution_time"),
+                "llm_tokens_used": operation_result.get("llm_tokens_used")
             }
 
-            if etl_script:
-                logger.info(f"✅ ETL脚本生成成功: {etl_script.get('name', 'N/A')} ({operation_type})")
+            if modified_etl_code:
+                logger.info(f"✅ ETL处理成功: {request.table_name} ({operation_type})")
+                logger.info(f"📄 ETL代码长度: {len(modified_etl_code)} 字符")
+                if changes_summary:
+                    logger.info(f"📊 变更摘要: {len(changes_summary)} 项变更")
             else:
-                logger.info(f"✅ ETL脚本生成成功，但无返回数据 ({operation_type})")
+                logger.info(f"✅ ETL处理完成，但无代码数据返回 ({operation_type} - {status})")
 
             return ETLResponse(
                 success=True,
-                data=response_data.get("etl_info"),
-                operation_type=operation_type
+                data=response_data
             )
         else:
-            logger.error(f"❌ ETL脚本生成失败: {result.error}")
-            raise HTTPException(status_code=500, detail=result.error or "ETL脚本生成失败")
+            logger.error(f"❌ ETL处理失败: {result.error}")
+            raise HTTPException(status_code=500, detail=result.error or "ETL处理失败")
 
     except Exception as e:
-        logger.error(f"❌ ETL脚本生成异常: {str(e)}")
-        raise HTTPException(status_code=500, detail=f"ETL脚本生成异常: {str(e)}")
+        logger.error(f"❌ ETL处理异常: {str(e)}")
+        logger.error(f"❌ ETL处理异常链路: {traceback.format_exc()}")
+        raise HTTPException(status_code=500, detail=f"ETL处理异常: {str(e)}")
 
 
 @app.post("/api/metric", response_model=MetricResponse)
@@ -365,6 +400,53 @@ async def create_metric_stream(request: MetricStreamingRequest):
             "X-Accel-Buffering": "no"  # 禁用Nginx缓冲
         }
     )
+
+
+@app.post("/api/v1/table/ddl", response_model=TableDDLResult)
+async def get_table_ddl(request: TableDDLRequest):
+    """
+    获取表DDL内容
+
+    Args:
+        request: 包含system_name, version_no, db_name, table_name, user_input的请求
+
+    Returns:
+        TableDDLResult: 包含DDL内容的标准化响应
+    """
+    try:
+        logger.info(f"🔍 收到表DDL查询请求: {request.db_name}.{request.table_name}")
+        logger.info(f"📋 请求来源: {request.system_name} v{request.version_no}")
+
+        # 调用表DDL服务
+        result = await table_ddl_service.get_table_ddl_with_validation(
+            system_name=request.system_name,
+            version_no=request.version_no,
+            db_name=request.db_name,
+            table_name=request.table_name,
+            user_input=request.user_input or ""
+        )
+
+        if result["success"]:
+            logger.info(f"✅ 表DDL查询成功: {request.table_name}")
+            return TableDDLResult(
+                success=True,
+                message=result["message"],
+                data=result["data"]
+            )
+        else:
+            logger.warning(f"⚠️ 表DDL查询失败: {result['message']}")
+            return TableDDLResult(
+                success=False,
+                message=result["message"],
+                data=None
+            )
+
+    except Exception as e:
+        logger.error(f"💥 表DDL查询API异常: {str(e)}")
+        raise HTTPException(
+            status_code=500,
+            detail=f"表DDL查询异常: {str(e)}"
+        )
 
 
 @app.get("/health", response_model=HealthResponse)

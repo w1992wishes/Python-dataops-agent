@@ -7,8 +7,14 @@ from .metric_prompts import (
 from .table_prompts import (
     TABLE_ANALYSIS_PROMPT,
 )
+from .etl_prompts import (
+    ETL_MODIFICATION_PROMPT,
+    ETL_CREATION_PROMPT,
+)
 
 __all__ = [
     "METRIC_ANALYSIS_PROMPT",
     "TABLE_ANALYSIS_PROMPT",
+    "ETL_MODIFICATION_PROMPT",
+    "ETL_CREATION_PROMPT",
 ]

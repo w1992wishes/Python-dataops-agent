@@ -62,6 +62,12 @@ class AgentManager:
         logger.info(f"📝 会话ID: {session_id}")
         logger.info(f"📋 用户输入: {user_input[:100]}{'...' if len(user_input) > 100 else ''}")
 
+        # 记录额外参数（如table_name）
+        if kwargs:
+            param_summary = {k: v for k, v in kwargs.items() if k != 'session_id'}
+            if param_summary:
+                logger.info(f"📊 额外参数: {param_summary}")
+
         try:
             # 获取或创建Agent实例
             agent = await self.create_agent(agent_name, config)
