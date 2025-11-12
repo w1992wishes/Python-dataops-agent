@@ -259,7 +259,7 @@ def register_etl_agent():
     default_etl_config = AgentConfig(
         name="etl_management",
         version="3.0.0",
-        description="ETL管理Agent，提供基于DDL变动的智能ETL代码修改功能（三步工作流）",
+        description="ETL管理Agent，提供基于DDL变动的智能ETL代码修改功能",
         timeout=300,
         model_name="deepseek-ai/DeepSeek-V3.1"
     )

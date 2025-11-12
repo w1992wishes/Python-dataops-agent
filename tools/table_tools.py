@@ -6,7 +6,7 @@ import asyncio
 
 # 模拟数据库存储
 MOCK_TABLE_DB = {
-    ("test_db", "user_table"): {
+    "user_table": {
         "id": "table_001",
         "name": "user_table",
         "nameZh": "用户表",
@@ -87,12 +87,11 @@ MOCK_METRICS_DB = {
 }
 
 
-async def query_table(db_name: str, name: str) -> Optional[Dict[str, Any]]:
+async def query_table(name: str) -> Optional[Dict[str, Any]]:
     """
     异步查询数据表信息
 
     Args:
-        db_name: 数据库名称
         name: 表名称
 
     Returns:
@@ -100,9 +99,8 @@ async def query_table(db_name: str, name: str) -> Optional[Dict[str, Any]]:
     """
     # 模拟异步数据库查询
     await asyncio.sleep(0.01)
-    key = (db_name, name)
-    if key in MOCK_TABLE_DB:
-        return MOCK_TABLE_DB[key]
+    if name in MOCK_TABLE_DB:
+        return MOCK_TABLE_DB[name]
     return None
 
 

@@ -231,6 +231,7 @@ async def create_etl(request: ETLRequest):
 
         if result.success and result.data:
             operation_result = result.data.get("operation_result", {})
+            etl_info = result.data.get("etl_info", {})
 
             # 提取关键信息
             operation_type = operation_result.get("operation_type", "create")
@@ -241,14 +242,20 @@ async def create_etl(request: ETLRequest):
 
             logger.info(f"📊 ETL工作流结果: {operation_type} - {status} - {message}")
 
-            # 构建响应数据
-            response_data = {
+            # 构建响应数据 - 首先从etl_info开始，然后用指定字段覆盖
+            response_data = dict(etl_info) if etl_info else {}
+
+            # 用operation_result中的指定字段覆盖etl_info中的同名字段
+            final_result = {
                 "table_name": request.table_name,
                 "etl_code": modified_etl_code,
                 "changes_summary": changes_summary,
                 "ddl_changes": operation_result.get("ddl_changes"),
                 "execution_time": operation_result.get("execution_time"),
             }
+
+            # 合并数据，存在的字段会被覆盖
+            response_data.update(final_result)
 
             if modified_etl_code:
                 logger.info(f"✅ ETL处理成功: {request.table_name} ({operation_type})")
@@ -385,7 +392,7 @@ async def create_metric_stream(request: MetricStreamingRequest):
     )
 
 
-@app.post("/api/v1/table/ddl", response_model=TableDDLResult)
+@app.post("/api/ddl", response_model=TableDDLResult)
 async def get_table_ddl(request: TableDDLRequest):
     """
     获取表DDL内容

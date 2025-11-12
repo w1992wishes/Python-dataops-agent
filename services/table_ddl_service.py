@@ -19,8 +19,7 @@ class TableDDLService:
         self.query_table_tool = query_table
         self.query_table_ddl_tool = query_table_ddl
 
-    async def get_table_ddl(self, system_name: str, version_no: str,
-                          db_name: str, table_name: str, user_input: str) -> Dict[str, Any]:
+    async def get_table_ddl(self, table_name: str) -> Dict[str, Any]:
         """
         获取表DDL的完整流程
 
@@ -39,18 +38,17 @@ class TableDDLService:
             }
         """
         try:
-            self.logger.info(f"🔍 开始查询表DDL: {db_name}.{table_name}")
-            self.logger.info(f"📋 请求参数: system_name={system_name}, version_no={version_no}")
+            self.logger.info(f"🔍 开始查询表DDL:  {table_name}")
 
             # Step 1: 查询表是否存在
-            self.logger.info(f"📊 步骤1: 查询表是否存在 - {db_name}.{table_name}")
-            table_info = await self.query_table_tool(db_name, table_name)
+            self.logger.info(f"📊 步骤1: 查询表是否存在 -  {table_name}")
+            table_info = await self.query_table_tool(name=table_name)
 
             if not table_info:
-                self.logger.warning(f"⚠️ 表不存在: {db_name}.{table_name}")
+                self.logger.warning(f"⚠️ 表不存在: {table_name}")
                 return {
                     "success": False,
-                    "message": f"表 '{table_name}' 在数据库 '{db_name}' 中不存在",
+                    "message": f"表 '{table_name}' 不存在",
                     "data": None
                 }
 
@@ -85,16 +83,11 @@ class TableDDLService:
             self.logger.info(f"🏗️ 步骤3: 构建标准化结果")
             result_data = {
                 "ddl_content": ddl_content,
-                "system_name": system_name,
-                "version_no": version_no,
                 "table_id": table_info["id"],
                 "table_name": table_name,
-                "db_name": db_name,
                 "table_level_type": table_info["levelType"],
                 "table_name_zh": table_info.get("nameZh", table_name),
-                "ddl_format_version": "1.0",
                 "ddl_last_modified": datetime.now().isoformat(),
-                "is_mock_ddl": table_info["id"] not in ["table_001", "table_002"]  # 简单判断是否为模拟DDL
             }
 
             self.logger.info(f"🎉 表DDL查询完成: {table_name} ({len(result_data['ddl_content'])} 字符)")
@@ -132,7 +125,6 @@ class TableDDLService:
             required_params = {
                 "system_name": system_name,
                 "version_no": version_no,
-                "db_name": db_name,
                 "table_name": table_name
             }
 
@@ -149,7 +141,7 @@ class TableDDLService:
             normalized_params = {
                 "system_name": system_name.strip(),
                 "version_no": version_no.strip(),
-                "db_name": db_name.strip().lower(),
+                "db_name": db_name.strip().lower() if db_name else "",
                 "table_name": table_name.strip().lower(),
                 "user_input": user_input.strip() if user_input else ""
             }
@@ -208,8 +200,7 @@ class TableDDLService:
         # Step 2: 执行DDL查询
         params = validation_result["normalized_params"]
         return await self.get_table_ddl(
-            params["system_name"], params["version_no"],
-            params["db_name"], params["table_name"], params["user_input"]
+            params["system_name"]
         )
 
 

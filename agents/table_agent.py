@@ -15,7 +15,7 @@ from .base_agent import BaseAgent, AgentConfig, AgentResponse
 from models.table_schemas import TableOperationResult, TableAnalysisResult
 from models import TableInfo
 from models.table import LevelType, TableType, TableProp
-from tools import query_table, query_metric_by_name_zh, get_metric_domains
+from tools import query_table, get_metric_domains
 from config.table_prompts import TABLE_ANALYSIS_PROMPT
 
 
@@ -143,7 +143,7 @@ class TableManagementAgent(BaseAgent):
 
         try:
             if db_name and table_name:
-                result = await query_table(db_name, table_name)
+                result = await query_table(table_name)
                 state["existing_table"] = result
 
                 if result:

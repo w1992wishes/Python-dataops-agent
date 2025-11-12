@@ -10,7 +10,7 @@ class TableDDLRequest(BaseModel):
     """表DDL查询请求模型"""
     system_name: str = Field(..., description="子系统英文名", max_length=100)
     version_no: str = Field(..., description="版本号", max_length=50)
-    db_name: str = Field(..., description="库名", max_length=100)
+    db_name: Optional[str] = Field(None, description="库名", max_length=100)
     table_name: str = Field(..., description="表名", max_length=100)
     user_input: str = Field(default="", description="用户输入的需求描述")
 
