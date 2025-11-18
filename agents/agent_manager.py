@@ -22,7 +22,7 @@ class AgentManager:
         self._registry = get_registry()
         self._max_history = 1000  # 最大历史记录数
 
-        logger.info("🎛️ Agent管理器初始化完成")
+        logger.info("Agent管理器初始化完成")
 
     async def create_agent(
         self,

@@ -76,6 +76,8 @@ class MetricManagementAgent(BaseAgent):
         class AgentState(TypedDict):
             messages: Annotated[list, add_messages]
             user_input: str
+            user_um: Optional[str]  # 用户账号
+            metric_name_zh: Optional[str]
             analysis_result: Optional[Dict[str, Any]]
             existing_metric: Optional[Dict[str, Any]]
             final_result: Optional[MetricOperationResult]
@@ -83,15 +85,30 @@ class MetricManagementAgent(BaseAgent):
 
         workflow = StateGraph(AgentState)
 
-        # 添加节点
+        # 添加节点 - 参考etl_agent模式，第一步查询指标信息
+        workflow.add_node("query_metric_info", self._query_metric_info)
         workflow.add_node("analyze_request", self._analyze_request)
-        workflow.add_node("query_metric", self._query_metric)
         workflow.add_node("execute_operation", self._execute_operation)
 
-        # 添加边 - 固定的执行流程
-        workflow.add_edge(START, "analyze_request")
-        workflow.add_edge("analyze_request", "query_metric")
-        workflow.add_edge("query_metric", "execute_operation")
+        # 添加条件判断函数
+        def should_continue_after_query(state):
+            """判断查询后是否应该继续执行"""
+            # 如果已经有final_result且success为False，说明权限检查失败，直接结束
+            if state.get("final_result") and not state.get("success", True):
+                return END
+            return "analyze_request"
+
+        # 添加边 - 带权限控制的执行流程
+        workflow.add_edge(START, "query_metric_info")
+        workflow.add_conditional_edges(
+            "query_metric_info",
+            should_continue_after_query,
+            {
+                "analyze_request": "analyze_request",
+                END: END
+            }
+        )
+        workflow.add_edge("analyze_request", "execute_operation")
         workflow.add_edge("execute_operation", END)
 
         return workflow.compile()
@@ -103,6 +120,8 @@ class MetricManagementAgent(BaseAgent):
         initial_state = {
             "messages": [],
             "user_input": user_input,
+            "user_um": kwargs.get("um"),
+            "metric_name_zh": kwargs.get("metric_name_zh"),
             "analysis_result": None,
             "existing_metric": None,
             "final_result": None,
@@ -145,6 +164,8 @@ class MetricManagementAgent(BaseAgent):
         initial_state = {
             "messages": [],
             "user_input": user_input,
+            "user_um": kwargs.get("um"),
+            "metric_name_zh": kwargs.get("metric_name_zh"),
             "analysis_result": None,
             "existing_metric": None,
             "final_result": None,
@@ -181,21 +202,31 @@ class MetricManagementAgent(BaseAgent):
                 }
 
                 # 添加步骤特定的数据
-                if node_name == "analyze_request":
+                if node_name == "query_metric_info":
+                    existing = node_state.get("existing_metric")
+                    final_result = node_state.get("final_result")
+
+                    # 如果有final_result且success为False，说明权限检查失败
+                    if final_result and not node_state.get("success", True):
+                        chunk["data"]["final_result"] = final_result.model_dump()
+                        chunk["message"] = f"🚫 {final_result.message}"
+                    elif existing:
+                        chunk["data"]["existing_metric"] = existing
+                        edit_permission = existing.get('editPermission', 0)
+                        permission_text = "有编辑权限" if edit_permission == 1 else "只读权限"
+                        chunk["message"] = f"📋 查询到已存在指标: {existing.get('nameZh', 'N/A')} - {permission_text}"
+                    else:
+                        chunk["message"] = "ℹ️ 未找到已存在指标"
+
+                elif node_name == "analyze_request":
                     analysis = node_state.get("analysis_result", {})
                     if analysis:
                         chunk["data"]["analysis"] = analysis
-                        chunk["message"] = f"✅ 需求分析完成: {analysis.get('operation_type', 'N/A')} - {analysis.get('metric_name_zh', 'N/A')}"
+                        metric_info = analysis.get('metric_info', {})
+                        metric_name = metric_info.get('nameZh', 'N/A') if metric_info else 'N/A'
+                        chunk["message"] = f"✅ 需求分析完成: {analysis.get('operation_type', 'N/A')} - {metric_name}"
                     else:
                         chunk["message"] = "📝 正在分析您的需求..."
-
-                elif node_name == "query_metric":
-                    existing = node_state.get("existing_metric")
-                    if existing:
-                        chunk["data"]["existing_metric"] = existing
-                        chunk["message"] = f"📋 查询到已存在指标: {existing.get('nameZh', 'N/A')}"
-                    else:
-                        chunk["message"] = "ℹ️ 未找到已存在指标"
 
                 elif node_name == "execute_operation":
                     final_result = node_state.get("final_result")
@@ -232,8 +263,11 @@ class MetricManagementAgent(BaseAgent):
     # ========== LangGraph 工作流节点 ==========
 
     async def _analyze_request(self, state) -> Dict[str, Any]:
-        """分析用户需求节点 - 直接输出MetricInfo格式"""
+        """分析用户需求节点 - 结合已查询的指标信息分析需求"""
         user_input = state["user_input"]
+        existing_metric = state.get("existing_metric")
+        metric_name_zh = state.get("metric_name_zh")
+
         self._logger.info("🔍 分析用户指标管理需求")
 
         # 获取业务域信息
@@ -251,11 +285,29 @@ class MetricManagementAgent(BaseAgent):
 
         try:
             chain = prompt | self.llm
-            result = await chain.ainvoke({
+            # 构建传递给LLM的参数，包含已查询的指标信息
+            llm_params = {
                 "user_input": user_input,
                 "domains_text": domains_text,
                 "format_instructions": format_instructions
-            })
+            }
+
+            # 如果有已存在的指标信息，传递给LLM
+            if existing_metric:
+                # 确保existing_metric是字典格式
+                if hasattr(existing_metric, 'model_dump'):
+                    metric_data = existing_metric.model_dump()
+                else:
+                    metric_data = existing_metric
+                llm_params["existing_metric_info"] = f"已存在指标信息: {metric_data}"
+            else:
+                llm_params["existing_metric_info"] = "未找到已存在的指标信息"
+
+            # 如果有传入指标中文名，传递给LLM
+            if metric_name_zh:
+                llm_params["provided_metric_name_zh"] = metric_name_zh
+
+            result = await chain.ainvoke(llm_params)
 
             # 使用Pydantic解析器解析LLM返回的结果
             analysis_result = self.analysis_parser.parse(result.content)
@@ -277,45 +329,6 @@ class MetricManagementAgent(BaseAgent):
                 metric_info=None
             )
             state["analysis_result"] = default_analysis.model_dump()
-
-        return state
-
-    async def _query_metric(self, state) -> Dict[str, Any]:
-        """查询指标节点 - 固定执行步骤"""
-        analysis_data = state.get("analysis_result", {})
-
-        # 从分析结果中获取操作类型和指标信息
-        operation_type = analysis_data.get("operation_type", "create")
-        metric_info_data = analysis_data.get("metric_info", {})
-
-        # 获取指标名称进行查询
-        metric_name_zh = metric_info_data.get("nameZh", "") if metric_info_data else ""
-        metric_name_en = metric_info_data.get("name", "") if metric_info_data else ""
-
-        # 优先使用中文名称查询
-        query_name = metric_name_zh if metric_name_zh else metric_name_en
-        self._logger.info(f"🔍 查询指标: {query_name} (操作类型: {operation_type})")
-
-        if not query_name:
-            self._logger.info("ℹ️ 未提供指标名称，跳过查询")
-            state["existing_metric"] = None
-            return state
-
-        try:
-            # 调用查询工具
-            existing_metric = await query_metric_by_name_zh(query_name)
-
-            if existing_metric:
-                self._logger.info(f"✅ 找到现有指标: {existing_metric.get('nameZh', 'N/A')} ({existing_metric.get('code', 'N/A')})")
-            else:
-                self._logger.info(f"ℹ️ 未找到指标: {query_name}")
-
-            state["existing_metric"] = existing_metric
-
-        except Exception as e:
-            self._logger.error(f"❌ 查询指标失败: {str(e)}")
-            self._logger.error(f"❌ 查询指标异常链路: {traceback.format_exc()}")
-            state["existing_metric"] = None
 
         return state
 
@@ -467,6 +480,50 @@ class MetricManagementAgent(BaseAgent):
 
         return state
 
+    async def _query_metric_info(self, state) -> Dict[str, Any]:
+        """查询指标信息节点"""
+        user_um = state.get("user_um")
+        metric_name_zh = state.get("metric_name_zh")
+
+        self._logger.info(f"🔍 [查询指标信息节点] 开始查询指标信息: userUM={user_um}, metric_name_zh={metric_name_zh}")
+
+        try:
+            # 使用扩展后的query_metric_by_name_zh查询指标及用户权限
+            existing_metric = await query_metric_by_name_zh(metric_name_zh, user_um)
+
+            if existing_metric:
+                state["existing_metric"] = existing_metric
+                edit_permission = existing_metric.get('editPermission', 0)
+                self._logger.info(f"✅ [查询指标信息节点] 找到已存在指标: {existing_metric.get('nameZh', 'N/A')} - 用户编辑权限: {edit_permission}")
+
+                # 检查用户是否有编辑权限
+                if edit_permission == 0:
+                    # 转换字典为MetricInfo对象
+                    existing_metric_info = create_metric_info_safe(existing_metric)
+
+                    error_result = MetricOperationResult(
+                        operation_type="update",
+                        status="error",
+                        message=f"对指标 {existing_metric.get('nameZh', 'N/A')} 没有编辑权限，无法执行修改操作",
+                        metric_info=None,
+                        existing_metric=existing_metric_info
+                    )
+                    state["final_result"] = error_result
+                    state["success"] = False
+                    state["existing_metric"] = existing_metric
+                    self._logger.warning(f"🚫 [查询指标信息节点] 用户 {user_um} 无编辑权限但要求修改指标，通过流程控制拒绝操作")
+                    return state
+
+            else:
+                state["existing_metric"] = None
+                self._logger.info(f"ℹ️ [查询指标信息节点] 未找到已存在指标")
+
+        except Exception as e:
+            self._logger.error(f"❌ [查询指标信息节点] 查询指标信息失败: {str(e)}")
+            state["existing_metric"] = None
+
+        return state
+
 # 注册MetricManagementAgent
 from .registry import get_registry
 
@@ -479,7 +536,7 @@ def register_metric_agent():
         version="3.0.0",
         description="指标管理Agent，提供基于LangGraph的指标创建、更新和查询功能",
         timeout=300,
-        model_name="deepseek-ai/DeepSeek-V3.1"
+        model_name="deepseek-ai/DeepSeek-V3.1-Terminus"
     )
 
     from .base_agent import SimpleAgentFactory

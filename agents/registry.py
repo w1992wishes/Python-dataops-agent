@@ -16,7 +16,7 @@ class AgentRegistry:
         self._agents: Dict[str, AgentFactory] = {}
         self._agent_configs: Dict[str, AgentConfig] = {}
         self._agent_metadata: Dict[str, Dict[str, Any]] = {}
-        logger.info("📋 Agent注册中心初始化完成")
+        logger.info("Agent注册中心初始化完成")
 
     def register(
         self,
@@ -33,9 +33,9 @@ class AgentRegistry:
         self._agent_configs[name] = config or factory.get_default_config()
         self._agent_metadata[name] = metadata or {}
 
-        logger.info(f"✅ Agent '{name}' 注册成功")
-        logger.info(f"   📋 描述: {self._agent_configs[name].description}")
-        logger.info(f"   🔧 工厂: {factory.__class__.__name__}")
+        logger.info(f"Agent '{name}' 注册成功")
+        logger.info(f"   描述: {self._agent_configs[name].description}")
+        logger.info(f"   工厂: {factory.__class__.__name__}")
 
     def register_class(
         self,

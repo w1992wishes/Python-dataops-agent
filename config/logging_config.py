@@ -30,6 +30,9 @@ class ColoredFormatter(logging.Formatter):
         return formatted
 
 
+# 全局变量，用于跟踪日志是否已经初始化
+_logging_initialized = False
+
 def setup_logging(
     level: str = "INFO",
     log_file: str = None,
@@ -47,6 +50,12 @@ def setup_logging(
         max_file_size: 日志文件最大大小（字节）
         backup_count: 备份文件数量
     """
+    global _logging_initialized
+
+    # 如果已经初始化过，直接返回
+    if _logging_initialized:
+        return
+
     # 创建根日志器
     root_logger = logging.getLogger()
     root_logger.setLevel(getattr(logging, level.upper()))
@@ -104,12 +113,15 @@ def setup_logging(
     logging.getLogger("langchain").setLevel(logging.WARNING)
     logging.getLogger("openai").setLevel(logging.WARNING)
 
+    # 标记为已初始化
+    _logging_initialized = True
+
     # 配置完成
-    root_logger.info("🔧 日志系统初始化完成")
-    root_logger.info(f"📊 日志级别: {level}")
+    root_logger.info("日志系统初始化完成")
+    root_logger.info(f"日志级别: {level}")
     if log_file:
-        root_logger.info(f"📁 日志文件: {log_file}")
-    root_logger.info(f"🖥️  控制台输出: {'开启' if console_output else '关闭'}")
+        root_logger.info(f"日志文件: {log_file}")
+    root_logger.info(f"控制台输出: {'开启' if console_output else '关闭'}")
 
 
 def get_logger(name: str) -> logging.Logger:
@@ -133,6 +145,7 @@ def configure_default_logging():
 # 环境变量配置
 import os
 
-# 自动配置（如果设置了环境变量）
-if os.getenv("AUTO_CONFIGURE_LOGGING", "true").lower() == "true":
+# 自动配置（如果设置了环境变量且在主进程中）
+import multiprocessing
+if os.getenv("AUTO_CONFIGURE_LOGGING", "true").lower() == "true" and multiprocessing.current_process().name == 'MainProcess':
     configure_default_logging()

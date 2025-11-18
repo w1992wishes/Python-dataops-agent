@@ -131,7 +131,9 @@ class APITester:
         """测试指标管理React Agent"""
         try:
             payload = {
-                "user_input": "创建一个新指标叫月度收入，统计每个月的活跃用户总数，业务域是用户域，需要包含用户ID、活跃日期等字段"
+                "user_input": "创建一个新指标叫月度收入，统计每个月的活跃用户总数，业务域是用户域，需要包含用户ID、活跃日期等字段",
+                "metric_name_zh": "月度活跃用户数",
+                "um": "test_user"
             }
 
             async with self.session.post(
@@ -398,8 +400,8 @@ class APITester:
         # 核心功能测试
         logger.info("\n🎯 核心功能测试")
         #await self.test_table_generation()
-        await self.test_etl_development()
-        # await self.test_metric_management()
+        #await self.test_etl_development()
+        await self.test_metric_management()
         # await self.test_metric_update()
 
         # 流式接口测试

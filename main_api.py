@@ -19,8 +19,7 @@ from services.table_ddl_service import table_ddl_service
 from models.ddl_schemas import TableDDLRequest, TableDDLResult
 
 # 配置日志
-from config.logging_config import get_logger, setup_logging
-setup_logging(level="INFO", console_output=True)
+from config.logging_config import get_logger
 logger = get_logger(__name__)
 
 import traceback
@@ -39,7 +38,7 @@ class BaseResponse(BaseModel):
     error: Optional[str] = Field(None, description="错误信息")
     operation_type: Optional[str] = Field(None, description="操作类型：create/update/query")
     entity_type: Optional[str] = Field(None, description="相应的实体类型")
-    timestamp: str = Field(default_factory=lambda: datetime.now().isoformat()),
+    timestamp: str = Field(default_factory=lambda: datetime.now().isoformat())
     message: Optional[str] = Field(None, description="操作消息")
 
 
@@ -51,9 +50,18 @@ class StreamingChunk(BaseModel):
     timestamp: str = Field(default_factory=lambda: datetime.now().isoformat())
 
 
+class MetricRequest(BaseModel):
+    """指标管理请求模型"""
+    user_input: str = Field(..., description="用户自然语言输入")
+    um: str = Field(..., description="用户账号")
+    metric_name_zh: str = Field(..., description="指标中文名称")
+
+
 class MetricStreamingRequest(BaseModel):
     """指标流式请求"""
     user_input: str = Field(..., description="用户自然语言输入")
+    um: str = Field(..., description="用户账号")
+    metric_name_zh: str = Field(..., description="指标中文名称")
 
 
 class TableResponse(BaseResponse):
@@ -64,14 +72,6 @@ class TableResponse(BaseResponse):
 class ETLRequest(BaseRequest):
     """ETL脚本请求模型"""
     table_name: str = Field(..., description="目标表名")
-
-    class Config:
-        json_schema_extra = {
-            "example": {
-                "user_input": "用户表新增了user_age字段，请修改ETL代码，添加年龄字段的数据处理",
-                "table_name": "user_table"
-            }
-        }
 
 
 class ETLResponse(BaseResponse):
@@ -91,17 +91,6 @@ class HealthResponse(BaseModel):
     timestamp: str = Field(default_factory=lambda: datetime.now().isoformat())
 
 
-class StreamingChunk(BaseModel):
-    """流式输出数据块"""
-    step: str = Field(..., description="当前步骤")
-    data: Optional[Dict[str, Any]] = Field(None, description="步骤数据")
-    message: Optional[str] = Field(None, description="步骤消息")
-    timestamp: str = Field(default_factory=lambda: datetime.now().isoformat())
-
-
-class MetricStreamingRequest(BaseModel):
-    """指标流式请求"""
-    user_input: str = Field(..., description="用户自然语言输入")
 
 
 # ========== FastAPI 应用初始化 ==========
@@ -283,7 +272,7 @@ async def create_etl(request: ETLRequest):
 
 
 @app.post("/api/metric", response_model=MetricResponse)
-async def create_metric(request: BaseRequest):
+async def create_metric(request: MetricRequest):
     """
     通过自然语言生成或更新指标信息
 
@@ -292,11 +281,15 @@ async def create_metric(request: BaseRequest):
     """
     try:
         logger.info(f"📊 收到指标管理请求: {request.user_input[:100]}...")
+        logger.info(f"👤 用户账号: {request.um}")
+        logger.info(f"📊 查询指标: {request.metric_name_zh}")
 
-        # 执行指标管理工作流
+        # 执行指标管理工作流，权限检查在agent内部进行
         result = await agent_manager.execute_agent(
             agent_name="metric_management",
-            user_input=request.user_input
+            user_input=request.user_input,
+            um=request.um,
+            metric_name_zh=request.metric_name_zh
         )
 
         if result.success and result.data:
@@ -314,18 +307,36 @@ async def create_metric(request: BaseRequest):
 
             # 根据操作类型和状态确定实际返回的指标信息
             final_metric_info = None
-            if metric_info:
-                final_metric_info = metric_info
-            elif existing_metric:
-                final_metric_info = existing_metric
+            response_success = True
 
-            if final_metric_info:
-                logger.info(f"✅ 指标处理成功: {final_metric_info.get('nameZh', 'N/A')} ({operation_type})")
+            if metric_info:
+                # 确保metric_info是字典格式
+                if hasattr(metric_info, 'model_dump'):
+                    final_metric_info = metric_info.model_dump()
+                else:
+                    final_metric_info = metric_info
+            elif existing_metric:
+                # 确保existing_metric是字典格式
+                if hasattr(existing_metric, 'model_dump'):
+                    final_metric_info = existing_metric.model_dump()
+                else:
+                    final_metric_info = existing_metric
+
+            # 检查是否为权限错误
+            if status == "error":
+                response_success = False
+                if final_metric_info:
+                    logger.info(f"🚫 指标处理失败: {final_metric_info.get('nameZh', 'N/A')} - {message}")
+                else:
+                    logger.info(f"🚫 指标处理失败: {operation_type} - {message}")
             else:
-                logger.info(f"✅ 指标处理完成，但无指标数据返回 ({operation_type} - {status})")
+                if final_metric_info:
+                    logger.info(f"✅ 指标处理成功: {final_metric_info.get('nameZh', 'N/A')} ({operation_type})")
+                else:
+                    logger.info(f"✅ 指标处理完成，但无指标数据返回 ({operation_type} - {status})")
 
             return MetricResponse(
-                success=True,
+                success=response_success,
                 data=final_metric_info,
                 operation_type=operation_type,
                 entity_type='MR',
@@ -350,6 +361,8 @@ async def create_metric_stream(request: MetricStreamingRequest):
     async def generate_stream():
         try:
             logger.info(f"📊 收到指标管理流式请求: {request.user_input[:100]}...")
+            logger.info(f"👤 用户账号: {request.um}")
+            logger.info(f"📊 查询指标: {request.metric_name_zh}")
 
             # 获取指标管理工作流Agent实例
             metric_agent = agent_manager.get_agent_instance("metric_management")
@@ -360,8 +373,8 @@ async def create_metric_stream(request: MetricStreamingRequest):
                     yield f"data: {json.dumps({'step': 'error', 'error': '指标管理Agent未初始化', 'timestamp': datetime.now().isoformat()})}\n\n"
                     return
 
-            # 流式执行Agent
-            async for chunk in metric_agent.process_stream(request.user_input):
+            # 流式执行Agent，权限检查在agent内部进行
+            async for chunk in metric_agent.process_stream(request.user_input, um=request.um, metric_name_zh=request.metric_name_zh):
                 # 格式化为SSE格式
                 chunk_data = {
                     "step": chunk.get("step", "unknown"),
@@ -451,9 +464,10 @@ async def health_check():
 
 if __name__ == "__main__":
     import uvicorn
+
     uvicorn.run(
         "main_api:app",
         host="0.0.0.0",
         port=8000,
-        reload=True
+        reload=False
     )

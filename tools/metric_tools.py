@@ -79,9 +79,9 @@ MOCK_METRIC_DB = {
 }
 
 
-async def query_metric_by_name_zh(metric_name_zh: str) -> Optional[Dict[str, Any]]:
-    """根据指标中文名称查询指标"""
-    logger.info(f"🔍 根据中文名称查询指标: {metric_name_zh}")
+async def query_metric_by_name_zh(metric_name_zh: str, user_um: str) -> Optional[Dict[str, Any]]:
+    """根据指标中文名称查询指标，并返回用户对该指标的编辑权限"""
+    logger.info(f"🔍 根据中文名称查询指标: {metric_name_zh}, 用户账号: {user_um}")
 
     # 模拟异步查询延迟
     await asyncio.sleep(0.1)
@@ -90,15 +90,50 @@ async def query_metric_by_name_zh(metric_name_zh: str) -> Optional[Dict[str, Any
     result = None
     for metric_data in MOCK_METRIC_DB.values():
         if metric_data.get("nameZh") == metric_name_zh:
-            result = metric_data
+            result = metric_data.copy()  # 创建副本以避免修改原始数据
             break
 
     if result:
-        logger.info(f"✅ 找到指标: {result.get('nameZh', 'N/A')} ({result.get('code', 'N/A')})")
+        # 添加用户编辑权限
+        edit_permission = get_user_edit_permission(user_um, result.get('id', ''))
+        result['editPermission'] = edit_permission
+        logger.info(f"✅ 找到指标: {result.get('nameZh', 'N/A')} ({result.get('code', 'N/A')}) - 用户{user_um}编辑权限: {edit_permission}")
     else:
         logger.info(f"ℹ️ 未找到指标: {metric_name_zh}")
 
     return result
+
+
+
+
+def get_user_edit_permission(user_um: str, metric_id: str) -> int:
+    """模拟查询用户对指标的编辑权限"""
+    logger.info(f"🔐 查询用户权限: userUM={user_um}, metric_id={metric_id}")
+
+    # 模拟权限数据库 - 根据用户和指标ID返回编辑权限
+    mock_permissions = {
+        # 用户"admin"对所有指标都有编辑权限
+        "admin": 1,
+        # 用户"zhangsan"对特定指标有编辑权限
+        "zhangsan": {
+            "metric_001": 1,  # 月度收入
+            "metric_002": 0,  # 用户数量 - 只读
+        },
+        # 用户"lisi"对所有指标都没有编辑权限
+        "lisi": 0,
+        # 其他用户默认有编辑权限
+        "default": 1
+    }
+
+    # 查询权限
+    if user_um in mock_permissions:
+        permission = mock_permissions[user_um]
+        if isinstance(permission, dict):
+            return permission.get(metric_id, 0)  # 默认无权限
+        elif isinstance(permission, int):
+            return permission
+    else:
+        return mock_permissions["default"]  # 默认权限
 
 def get_metric_domains() -> List[Dict[str, Any]]:
     """获取业务域列表"""
