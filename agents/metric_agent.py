@@ -14,14 +14,14 @@ from langgraph.graph.message import add_messages
 from .base_agent import BaseAgent, AgentConfig, AgentResponse
 from models.core.metric import MetricOperationResult, MetricInfo, MetricAnalysisResult
 from tools.metric_tools import (
-    query_metric_by_name_zh, get_metric_domains
+    query_metric_by_name_zh, get_metric_domains, query_business_map
 )
 from config.metric_prompts import (
     METRIC_ANALYSIS_PROMPT
 )
 
 
-def create_metric_info_safe(data: Dict[str, Any]) -> MetricInfo:
+async def create_metric_info_safe(data: Dict[str, Any]) -> MetricInfo:
     """安全创建MetricInfo对象，处理缺失字段的情况"""
     if not data:
         # 如果数据为空，返回一个默认的MetricInfo
@@ -33,6 +33,20 @@ def create_metric_info_safe(data: Dict[str, Any]) -> MetricInfo:
         )
 
     # 提取所有可能的字段，如果不存在则使用默认值
+    process_domain_id = data.get("processDomainId", "unknown")
+    business_info_map = data.get("businessInfoMap")
+
+    # 如果businessInfoMap为空，则异步获取业务映射信息
+    if not business_info_map and process_domain_id != "unknown":
+        try:
+            business_info_map = await query_business_map(process_domain_id)
+        except Exception as e:
+            # 如果异步查询失败，使用空的映射
+            business_info_map = {}
+
+    if not business_info_map:
+        business_info_map = {}
+
     return MetricInfo(
         id=data.get("id"),
         nameZh=data.get("nameZh", "未知指标"),
@@ -41,7 +55,7 @@ def create_metric_info_safe(data: Dict[str, Any]) -> MetricInfo:
         applicationScenarios=data.get("applicationScenarios", "HIVE_OFFLINE"),
         type=data.get("type", "IA"),
         lv=data.get("lv", "T2"),
-        processDomainId=data.get("processDomainId", "unknown"),
+        processDomainId=process_domain_id,
         safeLv=data.get("safeLv", "S1"),
         businessCaliberDesc=data.get("businessCaliberDesc", ""),
         businessOwner=data.get("businessOwner", "待指定"),
@@ -52,7 +66,7 @@ def create_metric_info_safe(data: Dict[str, Any]) -> MetricInfo:
         statisticalTime=data.get("statisticalTime", "日"),
         unit=data.get("unit", "个"),
         physicalInfoList=data.get("physicalInfoList"),
-        businessInfoMap=data.get("businessInfoMap", {})
+        businessInfoMap=business_info_map
     )
 
 
@@ -343,7 +357,7 @@ class MetricManagementAgent(BaseAgent):
         # 从分析结果中提取metric_info，如果是字典则转换为MetricInfo对象
         metric_info_data = analysis_data.get("metric_info", {})
         if isinstance(metric_info_data, dict):
-            analyzed_metric_info = create_metric_info_safe(metric_info_data)
+            analyzed_metric_info = await create_metric_info_safe(metric_info_data)
         else:
             analyzed_metric_info = metric_info_data
 
@@ -356,7 +370,7 @@ class MetricManagementAgent(BaseAgent):
             if operation_type == "create":
                 if existing_metric:
                     # 指标已存在
-                    existing_metric_info = create_metric_info_safe(existing_metric)
+                    existing_metric_info = await create_metric_info_safe(existing_metric)
                     final_result = MetricOperationResult(
                             operation_type="create",
                             status="exist",
@@ -392,7 +406,7 @@ class MetricManagementAgent(BaseAgent):
             elif operation_type == "update":
                 if existing_metric:
                     # 修改现有指标 - 合并分析得出的信息和现有指标信息
-                    existing_metric_info = create_metric_info_safe(existing_metric)
+                    existing_metric_info = await create_metric_info_safe(existing_metric)
 
                         # 更新现有指标的某些字段（如果分析结果中有值）
                     if analyzed_metric_info:
@@ -424,7 +438,7 @@ class MetricManagementAgent(BaseAgent):
             elif operation_type == "query":
                 if existing_metric:
                     # 查询成功
-                    existing_metric_info = create_metric_info_safe(existing_metric)
+                    existing_metric_info = await create_metric_info_safe(existing_metric)
                     final_result = MetricOperationResult(
                         operation_type="query",
                         status="success",
@@ -499,7 +513,7 @@ class MetricManagementAgent(BaseAgent):
                 # 检查用户是否有编辑权限
                 if edit_permission == 0:
                     # 转换字典为MetricInfo对象
-                    existing_metric_info = create_metric_info_safe(existing_metric)
+                    existing_metric_info = await create_metric_info_safe(existing_metric)
 
                     error_result = MetricOperationResult(
                         operation_type="update",

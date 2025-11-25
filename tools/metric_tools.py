@@ -135,6 +135,65 @@ def get_user_edit_permission(user_um: str, metric_id: str) -> int:
     else:
         return mock_permissions["default"]  # 默认权限
 
+async def query_business_map(process_domain_id: str) -> Dict[str, Any]:
+    """
+    根据process_domain_id异步查询业务映射信息
+
+    Args:
+        process_domain_id: 业务域ID
+
+    Returns:
+        Dict: 业务映射信息字典
+    """
+    logger.info(f"🔍 查询业务映射信息: {process_domain_id}")
+
+    # 模拟异步查询延迟
+    await asyncio.sleep(0.1)
+
+    # 模拟业务映射数据库
+    mock_business_map = {
+        "domain_001": {
+            "domainName": "财务域",
+            "domainNameZh": "财务",
+            "owner": "财务部门",
+            "description": "负责财务相关的指标管理",
+            "businessRules": ["财务数据规范", "收入计算规则", "成本分摊规则"]
+        },
+        "domain_002": {
+            "domainName": "用户域",
+            "domainNameZh": "用户",
+            "owner": "用户运营部门",
+            "description": "负责用户增长和行为分析相关的指标",
+            "businessRules": ["用户行为分析规则", "活跃度计算规则", "用户分层规则"]
+        },
+        "domain_003": {
+            "domainName": "产品域",
+            "domainNameZh": "产品",
+            "owner": "产品部门",
+            "description": "负责产品功能和体验相关的指标",
+            "businessRules": ["产品功能使用规则", "用户体验指标规则", "产品性能指标规则"]
+        },
+        "domain_004": {
+            "domainName": "运营域",
+            "domainNameZh": "运营",
+            "owner": "运营部门",
+            "description": "负责运营活动和效果相关的指标",
+            "businessRules": ["运营活动效果规则", "渠道转化规则", "留存分析规则"]
+        }
+    }
+
+    result = mock_business_map.get(process_domain_id, {
+        "domainName": "未知业务域",
+        "domainNameZh": "未知",
+        "owner": "待指定",
+        "description": "业务域信息未知",
+        "businessRules": []
+    })
+
+    logger.info(f"✅ 查询到业务映射信息: {result.get('domainNameZh', 'N/A')}")
+    return result
+
+
 def get_metric_domains() -> List[Dict[str, Any]]:
     """获取业务域列表"""
     return [
