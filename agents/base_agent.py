@@ -2,7 +2,7 @@
 Agent基类和通用接口定义
 """
 from abc import ABC, abstractmethod
-from typing import Dict, List, Any, Optional, Union
+from typing import Dict, Any, Optional
 from dataclasses import dataclass, field
 from enum import Enum
 import asyncio

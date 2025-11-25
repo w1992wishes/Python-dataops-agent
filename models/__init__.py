@@ -1,59 +1,58 @@
 """
 Models模块 - 定义所有数据模型
+重构后：从core和api模块导入
 """
-from .table import TableInfo, Column, LevelType, TableType, TableProp, ColProp, DataType, ColType
-from .metric_schemas import (
-    MetricField, MetricOperationType,
-    ApplicationScenarios, MetricType, MetricLevel, SafeLevel, PhysicalInfo, FieldInfo,
-    MetricInfo, MetricAnalysisResult, MetricOperationResult
+from .core.table import (
+    # 枚举
+    LevelType, TableType, TableProp, ColProp, DataType, ColType, TableOperationType,
+    # 基础模型
+    MetricCol, Column, TableInfo,
+    # 操作结果模型
+    TableAnalysisResult, TableOperationResult
 )
-from .table_schemas import (
-    TableOperationType, TableAnalysisResult, TableOperationResult
+
+from .core.metric import (
+    # 枚举
+    MetricOperationType, ApplicationScenarios, MetricType, MetricLevel, SafeLevel,
+    # 数据模型
+    MetricField, PhysicalInfo, FieldInfo, MetricInfo,
+    # 操作结果模型
+    MetricAnalysisResult, MetricOperationResult
 )
-from .ddl_schemas import (
-    TableDDLRequest, TableDDLResponse, TableDDLResult, APIErrorResponse
-)
-from .etl_schemas import (
-    ETLOperationResult
+
+from .core.etl import ETLOperationResult
+
+from .api import (
+    # API请求
+    BaseQueryRequest, TableDDLRequest, SchedulerRequest,
+    BaseRequest, MetricRequest, MetricStreamingRequest, ETLRequest,
+    # API响应
+    TableDDLResponse, SchedulerResponse,
+    TableResponse, ETLResponse, MetricResponse,
+    # API结果
+    TableDDLResult, SchedulerResult, APIErrorResponse,
+    # 通用API模型
+    BaseResponse, StreamingChunk, HealthResponse
 )
 
 __all__ = [
     # Table models
-    'TableInfo',
-    'Column',
-    'LevelType',
-    'TableType',
-    'TableProp',
-    'ColProp',
-    'DataType',
-    'ColType',
-
-    # ETL models
+    'LevelType', 'TableType', 'TableProp', 'ColProp', 'DataType', 'ColType', 'TableOperationType',
+    'MetricCol', 'Column', 'TableInfo', 'TableAnalysisResult', 'TableOperationResult',
 
     # Metric models
-    'MetricField',
-    'MetricOperationType',
-    'ApplicationScenarios',
-    'MetricType',
-    'MetricLevel',
-    'SafeLevel',
-    'PhysicalInfo',
-    'FieldInfo',
-    'MetricInfo',
-    'MetricAnalysisResult',
-    'MetricOperationResult',
-
-    # Table operation models
-    'TableOperationType',
-    'TableAnalysisResult',
-    'TableOperationResult',
-
-    # DDL models
-    'TableDDLRequest',
-    'TableDDLResponse',
-    'TableDDLResult',
-    'APIErrorResponse',
+    'MetricOperationType', 'ApplicationScenarios', 'MetricType', 'MetricLevel', 'SafeLevel',
+    'MetricField', 'PhysicalInfo', 'FieldInfo', 'MetricInfo',
+    'MetricAnalysisResult', 'MetricOperationResult',
 
     # ETL models
-    'ETLOperationResult'
+    'ETLOperationResult',
+
+    # API models
+    'BaseQueryRequest', 'TableDDLRequest', 'SchedulerRequest',
+    'BaseRequest', 'MetricRequest', 'MetricStreamingRequest', 'ETLRequest',
+    'TableDDLResponse', 'SchedulerResponse',
+    'TableResponse', 'ETLResponse', 'MetricResponse',
+    'TableDDLResult', 'SchedulerResult', 'APIErrorResponse',
+    'BaseResponse', 'StreamingChunk', 'HealthResponse'
 ]

@@ -12,7 +12,7 @@ from typing_extensions import TypedDict, Annotated
 from langgraph.graph.message import add_messages
 
 from .base_agent import BaseAgent, AgentConfig, AgentResponse
-from models.metric_schemas import MetricOperationResult, MetricInfo, MetricAnalysisResult
+from models.core.metric import MetricOperationResult, MetricInfo, MetricAnalysisResult
 from tools.metric_tools import (
     query_metric_by_name_zh, get_metric_domains
 )

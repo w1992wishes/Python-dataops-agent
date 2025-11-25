@@ -16,101 +16,19 @@ from agents import get_agent_manager
 
 # 导入表DDL查询服务
 from services.table_ddl_service import table_ddl_service
-from models.ddl_schemas import TableDDLRequest, TableDDLResult
+# 导入调度查询服务
+from services.scheduler_service import scheduler_service
+from models.api import (
+    TableDDLRequest, SchedulerRequest,
+    HealthResponse, BaseRequest, MetricRequest, MetricStreamingRequest, ETLRequest,
+    TableResponse, ETLResponse, MetricResponse, BaseResponse
+)
 
 # 配置日志
 from config.logging_config import get_logger
 logger = get_logger(__name__)
 
 import traceback
-
-# ========== 数据模型 ==========
-
-class BaseRequest(BaseModel):
-    """基础请求模型"""
-    user_input: str = Field(..., description="用户自然语言输入")
-
-
-class BaseResponse(BaseModel):
-    """基础响应模型"""
-    success: bool = Field(..., description="请求是否成功")
-    data: Optional[Dict[str, Any]] = Field(None, description="返回数据")
-    error: Optional[str] = Field(None, description="错误信息")
-    operation_type: Optional[str] = Field(None, description="操作类型：create/update/query")
-    entity_type: Optional[str] = Field(None, description="相应的实体类型")
-    timestamp: str = Field(default_factory=lambda: datetime.now().isoformat())
-    message: Optional[str] = Field(None, description="操作消息")
-
-
-class StreamingChunk(BaseModel):
-    """流式输出数据块"""
-    step: str = Field(..., description="当前步骤")
-    data: Optional[Dict[str, Any]] = Field(None, description="步骤数据")
-    message: Optional[str] = Field(None, description="步骤消息")
-    timestamp: str = Field(default_factory=lambda: datetime.now().isoformat())
-
-
-class MetricRequest(BaseModel):
-    """指标管理请求模型"""
-    user_input: str = Field(..., description="用户自然语言输入")
-    um: str = Field(..., description="用户账号")
-    metric_name_zh: str = Field(..., description="指标中文名称")
-
-
-class MetricStreamingRequest(BaseModel):
-    """指标流式请求"""
-    user_input: str = Field(..., description="用户自然语言输入")
-    um: str = Field(..., description="用户账号")
-    metric_name_zh: str = Field(..., description="指标中文名称")
-
-
-class TableResponse(BaseResponse):
-    """表结构响应"""
-    pass  # 使用BaseResponse的data字段存储所有数据
-
-
-class ETLRequest(BaseRequest):
-    """ETL脚本请求模型"""
-    table_name: str = Field(..., description="目标表名")
-
-
-class ETLResponse(BaseResponse):
-    """ETL脚本响应"""
-    pass  # 使用BaseResponse的data字段存储所有数据
-
-
-class MetricResponse(BaseResponse):
-    """指标响应"""
-    pass  # 使用BaseResponse的data字段存储所有数据
-
-
-class HealthResponse(BaseModel):
-    """健康检查响应"""
-    status: str = Field(default="healthy")
-    version: str = Field(default="3.0.0")
-    timestamp: str = Field(default_factory=lambda: datetime.now().isoformat())
-
-
-
-
-# ========== FastAPI 应用初始化 ==========
-
-app = FastAPI(
-    title="LangGraph 智能数据开发平台 API",
-    description="指标管理、表结构生成、ETL脚本开发",
-    version="3.0.0",
-    docs_url="/docs",
-    redoc_url="/redoc"
-)
-
-# 添加 CORS 中间件
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["*"],
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
 
 # ========== 应用生命周期管理 ==========
 
@@ -123,6 +41,8 @@ async def lifespan(app: FastAPI):
     logger.info("   POST /api/table - 表结构生成")
     logger.info("   POST /api/etl - ETL脚本生成")
     logger.info("   POST /api/metric - 指标管理")
+    logger.info("   POST /api/ddl - 表DDL查询")
+    logger.info("   POST /api/scheduler - 调度信息查询")
     logger.info("   GET /health - 健康检查")
     logger.info("📖 API文档: http://localhost:8000/docs")
 
@@ -135,7 +55,7 @@ async def lifespan(app: FastAPI):
 # FastAPI 应用初始化
 app = FastAPI(
     title="LangGraph 智能数据开发平台 API",
-    description="指标管理、表结构生成、ETL脚本开发",
+    description="指标管理、表结构生成、ETL脚本开发、DDL查询、调度信息查询 - 统一响应格式",
     version="3.0.0",
     docs_url="/docs",
     redoc_url="/redoc",
@@ -174,7 +94,9 @@ async def create_table(request: BaseRequest):
         )
 
         if result.success and result.data:
-            table_info = result.data.get("table_info", {})
+            operation_result = result.data.get("operation_result", {})
+            table_info = operation_result.get("table_info", {})
+            message = operation_result.get("message", "")
             analysis_data = result.data.get("analysis", {})
 
             # 获取操作类型
@@ -188,7 +110,9 @@ async def create_table(request: BaseRequest):
             return TableResponse(
                 success=True,
                 data=table_info or {},
-                operation_type=operation_type
+                operation_type=operation_type,
+                message=message,
+                entity_type='SUB',
             )
         else:
             logger.error(f"❌ 表结构生成失败: {result.error}")
@@ -239,8 +163,6 @@ async def create_etl(request: ETLRequest):
                 "table_name": request.table_name,
                 "etl_code": modified_etl_code,
                 "changes_summary": changes_summary,
-                "ddl_changes": operation_result.get("ddl_changes"),
-                "execution_time": operation_result.get("execution_time"),
             }
 
             # 合并数据，存在的字段会被覆盖
@@ -405,7 +327,7 @@ async def create_metric_stream(request: MetricStreamingRequest):
     )
 
 
-@app.post("/api/ddl", response_model=TableDDLResult)
+@app.post("/api/ddl", response_model=BaseResponse)
 async def get_table_ddl(request: TableDDLRequest):
     """
     获取表DDL内容
@@ -414,7 +336,7 @@ async def get_table_ddl(request: TableDDLRequest):
         request: 包含system_name, version_no, db_name, table_name, user_input的请求
 
     Returns:
-        TableDDLResult: 包含DDL内容的标准化响应
+        BaseResponse: 包含DDL内容的统一响应
     """
     try:
         logger.info(f"🔍 收到表DDL查询请求: {request.db_name}.{request.table_name}")
@@ -431,24 +353,87 @@ async def get_table_ddl(request: TableDDLRequest):
 
         if result["success"]:
             logger.info(f"✅ 表DDL查询成功: {request.table_name}")
-            return TableDDLResult(
+            return BaseResponse(
                 success=True,
-                message=result["message"],
-                data=result["data"]
+                data=result["data"],
+                operation_type="query",
+                entity_type="DEV_DDL",
+                message=result["message"]
             )
         else:
             logger.warning(f"⚠️ 表DDL查询失败: {result['message']}")
-            return TableDDLResult(
+            return BaseResponse(
                 success=False,
-                message=result["message"],
-                data=None
+                data=None,
+                operation_type="query",
+                entity_type="DDL",
+                error=result["message"]
             )
 
     except Exception as e:
         logger.error(f"💥 表DDL查询API异常: {str(e)}")
-        raise HTTPException(
-            status_code=500,
-            detail=f"表DDL查询异常: {str(e)}"
+        return BaseResponse(
+            success=False,
+            data=None,
+            operation_type="query",
+            entity_type="DDL",
+            error=f"表DDL查询异常: {str(e)}"
+        )
+
+
+@app.post("/api/scheduler", response_model=BaseResponse)
+async def get_scheduler_info(request: SchedulerRequest):
+    """
+    获取表调度信息
+
+    Args:
+        request: 包含system_name, version_no, db_name(可选), table_name, user_input的请求
+
+    Returns:
+        BaseResponse: 包含调度信息的统一响应
+    """
+    try:
+        logger.info(f"⏰ 收到调度查询请求: {request.system_name} v{request.version_no}")
+        logger.info(f"📋 查询表: {request.db_name}.{request.table_name if request.db_name else request.table_name}")
+        if request.user_input:
+            logger.info(f"📝 用户需求: {request.user_input[:100]}...")
+
+        # 调用调度服务
+        result = await scheduler_service.get_scheduler_info_with_validation(
+            system_name=request.system_name,
+            version_no=request.version_no,
+            db_name=request.db_name,
+            table_name=request.table_name,
+            user_input=request.user_input or ""
+        )
+
+        if result["success"]:
+            logger.info(f"✅ 调度查询成功: {request.table_name}")
+            return BaseResponse(
+                success=True,
+                data=result["data"],
+                operation_type="query",
+                entity_type="SCHEDULER",
+                message=result["message"]
+            )
+        else:
+            logger.warning(f"⚠️ 调度查询失败: {result['message']}")
+            return BaseResponse(
+                success=False,
+                data=None,
+                operation_type="query",
+                entity_type="SCHEDULER",
+                error=result["message"]
+            )
+
+    except Exception as e:
+        logger.error(f"💥 调度查询API异常: {str(e)}")
+        return BaseResponse(
+            success=False,
+            data=None,
+            operation_type="query",
+            entity_type="SCHEDULER",
+            error=f"调度查询异常: {str(e)}"
         )
 
 

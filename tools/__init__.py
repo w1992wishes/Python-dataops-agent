@@ -8,6 +8,9 @@ from .etl_tools import (
 from .metric_tools import (
     query_metric_by_name_zh, get_metric_domains
 )
+from .scheduler_tools import (
+    query_scheduler_info, generate_mock_schedule_info, validate_scheduler_params
+)
 
 __all__ = [
     # Table tools
@@ -18,5 +21,10 @@ __all__ = [
 
     # Metric tools
     'query_metric_by_name_zh',
-    'get_metric_domains'
+    'get_metric_domains',
+
+    # Scheduler tools
+    'query_scheduler_info',
+    'generate_mock_schedule_info',
+    'validate_scheduler_params'
 ]

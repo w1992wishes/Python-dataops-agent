@@ -1,7 +1,7 @@
 """
 Agent注册中心 - 管理所有可用的Agent
 """
-from typing import Dict, List, Optional, Type, Callable, Any, Union
+from typing import Dict, List, Optional, Type, Any
 import logging
 from .base_agent import BaseAgent, AgentFactory, AgentConfig
 

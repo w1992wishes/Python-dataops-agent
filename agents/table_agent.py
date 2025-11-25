@@ -1,9 +1,8 @@
 """
-表结构生成Agent - 参考metric_agent重构
+表结构生成Agent
 使用LangGraph固定工作流，返回包含message字段的结构化结果
 """
-from typing import Dict, List, Any, Optional, AsyncGenerator
-from datetime import datetime
+from typing import Dict, Any, Optional
 import traceback
 from langchain_core.output_parsers import PydanticOutputParser
 from langchain_core.prompts import ChatPromptTemplate
@@ -12,9 +11,7 @@ from typing_extensions import TypedDict, Annotated
 from langgraph.graph.message import add_messages
 
 from .base_agent import BaseAgent, AgentConfig, AgentResponse
-from models.table_schemas import TableOperationResult, TableAnalysisResult
-from models import TableInfo
-from models.table import LevelType, TableType, TableProp
+from models.core.table import TableOperationResult, TableAnalysisResult, TableInfo, LevelType, TableType, TableProp
 from tools import query_table, get_metric_domains
 from config.table_prompts import TABLE_ANALYSIS_PROMPT
 
@@ -39,22 +36,22 @@ def create_table_info_safe(data: Dict[str, Any]) -> TableInfo:
             cols=[]
         )
 
-    # 提取所有可能的字段，如果不存在则使用默认值
+    # 提取所有可能的字段，如果不存在或为None则使用默认值
     return TableInfo(
         id=data.get("id"),
-        name=data.get("name", "unknown_table"),
-        nameZh=data.get("nameZh", "未知表"),
-        businessDomainId=data.get("businessDomainId", "unknown_domain"),
-        daName=data.get("daName", "unknown_db"),
-        levelType=data.get("levelType", LevelType.SUB),
-        type=data.get("type", TableType.IAT),
-        tableProp=data.get("tableProp", TableProp.NORMAL),
-        particleSize=data.get("particleSize", "unknown"),
-        itOwner=data.get("itOwner", "system"),
-        itGroup=data.get("itGroup", "system"),
-        businessOwner=data.get("businessOwner", "待指定"),
-        businessGroup=data.get("businessGroup", "待指定"),
-        cols=data.get("cols", [])
+        name=data.get("name") or "unknown_table",
+        nameZh=data.get("nameZh") or "未知表",
+        businessDomainId=data.get("businessDomainId") or "unknown_domain",
+        daName=data.get("daName") or "unknown_db",
+        levelType=data.get("levelType") or LevelType.SUB,
+        type=data.get("type") or TableType.IAT,
+        tableProp=data.get("tableProp") or TableProp.NORMAL,
+        particleSize=data.get("particleSize") or "unknown",
+        itOwner=data.get("itOwner") or "system",
+        itGroup=data.get("itGroup") or "system",
+        businessOwner=data.get("businessOwner") or "待指定",
+        businessGroup=data.get("businessGroup") or "待指定",
+        cols=data.get("cols") or []
     )
 
 
@@ -104,7 +101,7 @@ class TableManagementAgent(BaseAgent):
 
         try:
             # 获取业务域信息（用于表的数据库选择）
-            domains = await get_metric_domains()
+            domains = get_metric_domains()
             domains_text = "\n".join([f"- {domain.get('id', '')}: {domain.get('nameZh', '')}" for domain in domains]) if domains else "无可用业务域"
 
             # 使用配置文件中的提示词和格式化指令
@@ -142,7 +139,7 @@ class TableManagementAgent(BaseAgent):
         self._logger.info(f"📋 [查询表节点] 查询表信息: {db_name}.{table_name}")
 
         try:
-            if db_name and table_name:
+            if table_name:
                 result = await query_table(table_name)
                 state["existing_table"] = result
 
@@ -151,7 +148,7 @@ class TableManagementAgent(BaseAgent):
                 else:
                     self._logger.info("ℹ️ [查询表节点] 未找到已存在的表")
             else:
-                self._logger.info("⚠️ [查询表节点] 缺少数据库名或表名，跳过查询")
+                self._logger.info("⚠️ [查询表节点] 缺少表名，跳过查询")
                 state["existing_table"] = None
 
         except Exception as e:
@@ -194,7 +191,7 @@ class TableManagementAgent(BaseAgent):
                         name=table_name or "generated_table",
                         nameZh=table_name_zh,
                         businessDomainId="default_domain",
-                        daName=db_name,
+                        daName=db_name or "default_db",
                         levelType=LevelType.SUB,
                         type=TableType.IAT,
                         tableProp=TableProp.NORMAL,
@@ -227,12 +224,6 @@ class TableManagementAgent(BaseAgent):
                 else:
                     # 修改已存在的表
                     existing_table_info = create_table_info_safe(existing_table)
-                    # 更新表信息
-                    if table_name_zh:
-                        existing_table_info.nameZh = table_name_zh
-                    if table_purpose:
-                        existing_table_info.tableComment = f"{existing_table_info.tableComment}。更新需求: {user_input}"
-
                     final_result = TableOperationResult(
                         operation_type="update",
                         status="success",
@@ -355,7 +346,7 @@ def register_table_agent():
     from .base_agent import SimpleAgentFactory
     factory = SimpleAgentFactory(TableManagementAgent)
 
-    registry.register("table_management", factory, default_table_config, {
+    registry.register("table_generation", factory, default_table_config, {
         "category": "data_modeling",
         "capabilities": ["table_creation", "table_update", "table_query", "schema_design"],
         "agent_type": "langgraph_workflow"

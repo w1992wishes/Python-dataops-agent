@@ -1,7 +1,7 @@
 """
 Agent管理器 - 负责Agent的生命周期管理和调度
 """
-from typing import Dict, List, Optional, Any, Union
+from typing import Dict, List, Optional, Any
 import asyncio
 import logging
 import time

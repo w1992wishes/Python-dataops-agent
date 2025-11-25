@@ -91,7 +91,6 @@ class TableDDLService:
             }
 
             self.logger.info(f"🎉 表DDL查询完成: {table_name} ({len(result_data['ddl_content'])} 字符)")
-            self.logger.info(f"📊 结果摘要: 是否模拟={result_data['is_mock_ddl']}")
 
             return {
                 "success": True,
@@ -147,6 +146,9 @@ class TableDDLService:
             }
 
             # 额外验证
+            import re
+
+            # 长度验证
             if len(normalized_params["system_name"]) > 100:
                 return {
                     "valid": False,
@@ -158,6 +160,39 @@ class TableDDLService:
                 return {
                     "valid": False,
                     "message": "table_name 长度不能超过100个字符",
+                    "normalized_params": None
+                }
+
+            # 格式验证
+            system_pattern = r'^[a-zA-Z0-9_-]+$'
+            version_pattern = r'^[a-zA-Z0-9_.-]+$'
+            name_pattern = r'^[a-zA-Z0-9_-]+$'
+
+            if not re.match(system_pattern, normalized_params["system_name"]):
+                return {
+                    "valid": False,
+                    "message": "system_name只能包含字母、数字、下划线、短横线",
+                    "normalized_params": None
+                }
+
+            if not re.match(version_pattern, normalized_params["version_no"]):
+                return {
+                    "valid": False,
+                    "message": "version_no只能包含字母、数字、点号、下划线、短横线",
+                    "normalized_params": None
+                }
+
+            if not re.match(name_pattern, normalized_params["table_name"]):
+                return {
+                    "valid": False,
+                    "message": "table_name只能包含字母、数字、下划线、短横线",
+                    "normalized_params": None
+                }
+
+            if normalized_params["db_name"] and not re.match(name_pattern, normalized_params["db_name"]):
+                return {
+                    "valid": False,
+                    "message": "db_name只能包含字母、数字、下划线、短横线",
                     "normalized_params": None
                 }
 
@@ -199,9 +234,12 @@ class TableDDLService:
 
         # Step 2: 执行DDL查询
         params = validation_result["normalized_params"]
-        return await self.get_table_ddl(
-            params["system_name"]
+        ddl_result = await self.get_table_ddl(
+            params["table_name"]
         )
+        ddl_result['data']['system_name'] = system_name
+        ddl_result['data']['version_no'] = version_no
+        return ddl_result
 
 
 # 创建全局实例

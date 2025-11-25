@@ -13,7 +13,7 @@ from typing_extensions import TypedDict, Annotated
 from langgraph.graph.message import add_messages
 
 from .base_agent import BaseAgent, AgentConfig, AgentResponse
-from models.etl_schemas import ETLOperationResult
+from models.core.etl import ETLOperationResult
 from tools.etl_tools import get_etl_script
 from tools.table_tools import query_table_ddl
 from config.etl_prompts import ETL_MODIFICATION_PROMPT, ETL_CREATION_PROMPT
