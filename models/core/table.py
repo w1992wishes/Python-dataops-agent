@@ -198,6 +198,17 @@ class TableOperationResult(BaseModel):
     }
 
 
+# ==================== 表请求分析模型 ====================
+
+class TableRequestAnalysis(BaseModel):
+    """表请求分析结果模型"""
+    operation_type: str = Field(description="操作类型: create/update/query")
+    db_name: Optional[str] = Field(default=None, description="数据库名，如果用户明确指定")
+    table_name: Optional[str] = Field(default=None, description="表名，如果用户明确指定")
+    metric_name_zh_list: List[str] = Field(default_factory=list, description="指标中文名称列表")
+    table_purpose: str = Field(description="表的用途和业务场景描述")
+
+
 # ==================== 导出列表 ====================
 
 __all__ = [
@@ -214,6 +225,9 @@ __all__ = [
     'MetricCol',
     'Column',
     'TableInfo',
+
+    # 分析模型
+    'TableRequestAnalysis',
 
     # 操作结果模型
     'TableAnalysisResult',

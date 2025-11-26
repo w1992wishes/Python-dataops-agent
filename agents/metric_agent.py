@@ -49,20 +49,20 @@ async def create_metric_info_safe(data: Dict[str, Any]) -> MetricInfo:
 
     return MetricInfo(
         id=data.get("id"),
-        nameZh=data.get("nameZh", "未知指标"),
-        name=data.get("name", "unknown_metric"),
-        code=data.get("code", ""),
+        nameZh=data.get("nameZh"),
+        name=data.get("name"),
+        code=data.get("code"),
         applicationScenarios=data.get("applicationScenarios", "HIVE_OFFLINE"),
         type=data.get("type", "IA"),
         lv=data.get("lv", "T2"),
         processDomainId=process_domain_id,
         safeLv=data.get("safeLv", "S1"),
         businessCaliberDesc=data.get("businessCaliberDesc", ""),
-        businessOwner=data.get("businessOwner", "待指定"),
-        businessTeam=data.get("businessTeam", "待指定"),
-        statisticalObject=data.get("statisticalObject", "待定义"),
-        statisticalRule=data.get("statisticalRule", "待定义"),
-        statisticalRuleIt=data.get("statisticalRuleIt", "待定义"),
+        businessOwner=data.get("businessOwner"),
+        businessTeam=data.get("businessTeam"),
+        statisticalObject=data.get("statisticalObject"),
+        statisticalRule=data.get("statisticalRule"),
+        statisticalRuleIt=data.get("statisticalRuleIt"),
         statisticalTime=data.get("statisticalTime", "日"),
         unit=data.get("unit", "个"),
         physicalInfoList=data.get("physicalInfoList"),
@@ -79,7 +79,6 @@ class MetricManagementAgent(BaseAgent):
 
         # 创建输出解析器
         self.analysis_parser = PydanticOutputParser(pydantic_object=MetricAnalysisResult)
-        self.result_parser = PydanticOutputParser(pydantic_object=MetricOperationResult)
 
         # 创建LangGraph工作流
         self.graph = self._create_workflow()

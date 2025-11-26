@@ -20,7 +20,7 @@ from services.table_ddl_service import table_ddl_service
 from services.scheduler_service import scheduler_service
 from models.api import (
     TableDDLRequest, SchedulerRequest,
-    HealthResponse, BaseRequest, MetricRequest, MetricStreamingRequest, ETLRequest,
+    HealthResponse, TableRequest, MetricRequest, MetricStreamingRequest, ETLRequest,
     TableResponse, ETLResponse, MetricResponse, BaseResponse
 )
 
@@ -77,30 +77,32 @@ agent_manager = get_agent_manager()
 # ========== 核心接口 ==========
 
 @app.post("/api/table", response_model=TableResponse)
-async def create_table(request: BaseRequest):
+async def create_table(request: TableRequest):
     """
-    通过自然语言生成表结构信息
+    通过自然语言和表名生成/修改表结构信息
 
-    输入：描述表需求的自然语言
+    输入：描述表需求的自然语言 + 表名
     输出：包含字段、类型、约束等完整表结构信息
     """
     try:
-        logger.info(f"📊 收到表结构生成请求: {request.user_input[:100]}...")
+        logger.info(f"📊 收到表结构生成请求: {request.table_name}")
+        logger.info(f"📝 用户需求: {request.user_input[:100]}...")
 
-        # 执行表生成Agent
+        # 执行表生成Agent（参考metric_agent，传入table_name参数）
         result = await agent_manager.execute_agent(
             agent_name="table_generation",
-            user_input=request.user_input
+            user_input=request.user_input,
+            table_name=request.table_name
         )
 
         if result.success and result.data:
+            # 使用与metric_agent相同的数据结构
             operation_result = result.data.get("operation_result", {})
-            table_info = operation_result.get("table_info", {})
+            table_info = result.data.get("table_info", {})
             message = operation_result.get("message", "")
-            analysis_data = result.data.get("analysis", {})
 
             # 获取操作类型
-            operation_type = analysis_data.get("operation_type", "create")
+            operation_type = operation_result.get("operation_type", "create")
 
             if table_info:
                 logger.info(f"✅ 表结构生成成功: {table_info.get('nameZh', 'N/A')} ({operation_type})")
@@ -115,7 +117,7 @@ async def create_table(request: BaseRequest):
                 entity_type='SUB',
             )
         else:
-            logger.error(f"❌ 表结构生成失败: {result.error}")
+            logger.error(f"❌ 表结构生成失败: {traceback.format_exc()}")
             raise HTTPException(status_code=500, detail=result.error or "表结构生成失败")
 
     except Exception as e:
@@ -325,7 +327,6 @@ async def create_metric_stream(request: MetricStreamingRequest):
             "X-Accel-Buffering": "no"  # 禁用Nginx缓冲
         }
     )
-
 
 @app.post("/api/ddl", response_model=BaseResponse)
 async def get_table_ddl(request: TableDDLRequest):

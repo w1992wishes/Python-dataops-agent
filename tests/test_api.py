@@ -74,7 +74,8 @@ class APITester:
         """测试表结构生成"""
         try:
             payload = {
-                "user_input": "修改用户表，新增用户名、邮箱、注册时间、手机号字段，表属于用户域"
+                "user_input": "修改用户表，新增用户名、邮箱、注册时间、手机号字段，表属于用户域",
+                "table_name": "user_table"
             }
 
             logger.info("📡 发送表结构生成请求...")

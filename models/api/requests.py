@@ -62,9 +62,21 @@ class BaseRequest(BaseModel):
     user_input: str = Field(..., description="用户自然语言输入")
 
 
-class MetricRequest(BaseModel):
+class TableRequest(BaseRequest):
+    """表管理请求模型"""
+    table_name: str = Field(..., description="目标表名")
+
+    class Config:
+        json_schema_extra = {
+            "example": {
+                "user_input": "创建一个用户表，包含用户基本信息",
+                "table_name": "user_table"
+            }
+        }
+
+
+class MetricRequest(BaseRequest):
     """指标管理请求模型"""
-    user_input: str = Field(..., description="用户自然语言输入")
     um: str = Field(..., description="用户账号")
     metric_name_zh: str = Field(..., description="指标中文名称")
 
@@ -78,9 +90,8 @@ class MetricRequest(BaseModel):
         }
 
 
-class MetricStreamingRequest(BaseModel):
+class MetricStreamingRequest(BaseRequest):
     """指标流式请求"""
-    user_input: str = Field(..., description="用户自然语言输入")
     um: str = Field(..., description="用户账号")
     metric_name_zh: str = Field(..., description="指标中文名称")
 

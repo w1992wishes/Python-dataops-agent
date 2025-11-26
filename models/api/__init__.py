@@ -3,7 +3,7 @@ API模型包
 """
 from .requests import (
     BaseQueryRequest, TableDDLRequest, SchedulerRequest,
-    BaseRequest, MetricRequest, MetricStreamingRequest, ETLRequest
+    BaseRequest, TableRequest, MetricRequest, MetricStreamingRequest, ETLRequest
 )
 from .responses import TableDDLResponse, SchedulerResponse
 from .results import (
@@ -18,6 +18,7 @@ __all__ = [
     'TableDDLRequest',
     'SchedulerRequest',
     'BaseRequest',
+    'TableRequest',
     'MetricRequest',
     'MetricStreamingRequest',
     'ETLRequest',

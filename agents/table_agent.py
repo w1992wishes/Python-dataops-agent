@@ -11,9 +11,16 @@ from typing_extensions import TypedDict, Annotated
 from langgraph.graph.message import add_messages
 
 from .base_agent import BaseAgent, AgentConfig, AgentResponse
-from models.core.table import TableOperationResult, TableAnalysisResult, TableInfo, LevelType, TableType, TableProp
+from models.core.table import TableOperationResult, TableInfo, TableRequestAnalysis, LevelType, TableType, TableProp, Column, ColProp, DataType, ColType
 from tools import query_table, get_metric_domains
-from config.table_prompts import TABLE_ANALYSIS_PROMPT
+from tools.metric_tools import query_metric_by_name_zh
+from config.table_prompts import TABLE_REQUEST_ANALYSIS_PROMPT, TABLE_STRUCTURE_PROMPT
+from config.logging_config import get_logger
+from typing import List
+from langchain_core.output_parsers import PydanticOutputParser
+import asyncio
+import json
+import traceback
 
 
 def create_table_info_safe(data: Dict[str, Any]) -> TableInfo:
@@ -21,18 +28,18 @@ def create_table_info_safe(data: Dict[str, Any]) -> TableInfo:
     if not data:
         # 如果数据为空，返回一个默认的TableInfo
         return TableInfo(
-            name="unknown_table",
-            nameZh="未知表",
-            businessDomainId="unknown_domain",
-            daName="unknown_db",
+            name="",
+            nameZh="",
+            businessDomainId="",
+            daName="",
             levelType=LevelType.SUB,
             type=TableType.IAT,
             tableProp=TableProp.NORMAL,
-            particleSize="unknown",
-            itOwner="system",
-            itGroup="system",
-            businessOwner="WANQINFENG063",
-            businessGroup="待指定",
+            particleSize="",
+            itOwner="",
+            itGroup="",
+            businessOwner="",
+            businessGroup="",
             cols=[]
         )
 
@@ -60,10 +67,12 @@ class TableManagementAgent(BaseAgent):
 
     def __init__(self, config: AgentConfig):
         super().__init__(config)
+        self._logger = get_logger("table_agent")
         self._logger.info("📊 初始化表管理LangGraph Agent...")
 
         # 创建输出解析器
-        self.analysis_parser = PydanticOutputParser(pydantic_object=TableAnalysisResult)
+        self.analysis_parser = PydanticOutputParser(pydantic_object=TableRequestAnalysis)
+        self.table_parser = PydanticOutputParser(pydantic_object=TableInfo)
 
         # 创建LangGraph工作流
         self.graph = self._create_workflow()
@@ -74,223 +83,245 @@ class TableManagementAgent(BaseAgent):
         class AgentState(TypedDict):
             messages: Annotated[list, add_messages]
             user_input: str
-            analysis_result: Optional[Dict[str, Any]]
+            table_name: Optional[str]  # 表名参数
+            operation_type: Optional[str]
+            db_name: Optional[str]
+            metric_name_zh_list: List[str]
+            table_purpose: str
             existing_table: Optional[Dict[str, Any]]
+            metric_ids: List[str]
+            final_table_info: Optional[TableInfo]
             final_result: Optional[TableOperationResult]
             success: bool
 
         workflow = StateGraph(AgentState)
 
         # 添加节点
-        workflow.add_node("analyze_request", self._analyze_request)
+        # 添加节点 - 四步工作流：解析输入→查询表→查询指标→生成表
+        workflow.add_node("parse_input", self._parse_input)
         workflow.add_node("query_table", self._query_table)
-        workflow.add_node("execute_operation", self._execute_operation)
+        workflow.add_node("query_metrics", self._query_metrics)
+        workflow.add_node("generate_table", self._generate_table)
 
         # 添加边
-        workflow.add_edge(START, "analyze_request")
-        workflow.add_edge("analyze_request", "query_table")
-        workflow.add_edge("query_table", "execute_operation")
-        workflow.add_edge("execute_operation", END)
+        workflow.add_edge(START, "parse_input")
+        workflow.add_edge("parse_input", "query_table")
+        workflow.add_edge("query_table", "query_metrics")
+        workflow.add_edge("query_metrics", "generate_table")
+        workflow.add_edge("generate_table", END)
 
         return workflow.compile()
 
-    async def _analyze_request(self, state) -> Dict[str, Any]:
-        """分析用户需求节点 - 直接输出TableAnalysisResult格式"""
+    async def _parse_input(self, state) -> Dict[str, Any]:
+        """解析用户输入，提取表请求关键信息"""
         user_input = state["user_input"]
-        self._logger.info("🔍 [分析请求节点] 开始分析用户需求")
+        self._logger.info("🔍 第1步：解析用户输入")
+
+        prompt = ChatPromptTemplate.from_template(TABLE_REQUEST_ANALYSIS_PROMPT)
 
         try:
-            # 获取业务域信息（用于表的数据库选择）
-            domains = get_metric_domains()
-            domains_text = "\n".join([f"- {domain.get('id', '')}: {domain.get('nameZh', '')}" for domain in domains]) if domains else "无可用业务域"
-
-            # 使用配置文件中的提示词和格式化指令
-            format_instructions = self.analysis_parser.get_format_instructions()
-            prompt = ChatPromptTemplate.from_template(TABLE_ANALYSIS_PROMPT)
-
+            # 调用大模型解析输入
             chain = prompt | self.llm | self.analysis_parser
             result = await chain.ainvoke({
                 "user_input": user_input,
-                "format_instructions": format_instructions
+                "format_instructions": self.analysis_parser.get_format_instructions()
             })
 
-            self._logger.info(f"✅ [分析请求节点] 分析完成: {result.operation_type} - {result.table_name_zh}")
-            state["analysis_result"] = result.model_dump()
+            parsed_data = result.dict()
+
+            # 更新状态
+            state["operation_type"] = parsed_data.get("operation_type", "create")
+            state["db_name"] = parsed_data.get("db_name")
+            state["table_name"] = parsed_data.get("table_name") or state.get("table_name")
+            state["metric_name_zh_list"] = parsed_data.get("metric_name_zh_list", [])
+            state["table_purpose"] = parsed_data.get("table_purpose", "")
+
+            self._logger.info(f"✅ 解析成功 - 操作类型: {state['operation_type']}")
+            self._logger.info(f"📊 识别指标数: {len(state['metric_name_zh_list'])}")
 
         except Exception as e:
-            self._logger.error(f"❌ [分析请求节点] 分析失败: {str(e)}")
-            self._logger.error(f"❌ [分析请求节点] 异常链路: {traceback.format_exc()}")
-            # 提供默认的分析结果
-            default_result = TableAnalysisResult(
-                operation_type="create",
-                table_name_zh="未知表",
-                table_purpose=f"基于用户需求分析: {user_input}"
-            )
-            state["analysis_result"] = default_result.model_dump()
+            self._logger.error(f"❌ 解析失败: {str(e)}")
+            self._logger.error(f"❌ 解析异常链路: {traceback.format_exc()}")
+            # 异常时设置默认值
+            state.update({
+                "operation_type": "create",
+                "db_name": None,
+                "table_name": state.get("table_name"),
+                "metric_name_zh_list": [],
+                "table_purpose": ""
+            })
 
         return state
 
     async def _query_table(self, state) -> Dict[str, Any]:
-        """查询已存在的表信息节点"""
-        analysis_data = state.get("analysis_result", {})
-        db_name = analysis_data.get("db_name")
-        table_name = analysis_data.get("table_name")
+        """查询已存在的表信息"""
+        table_name = state.get("table_name")
+        self._logger.info("📦 第2步：查询已存在表")
 
-        self._logger.info(f"📋 [查询表节点] 查询表信息: {db_name}.{table_name}")
-
-        try:
-            if table_name:
+        if table_name:
+            try:
                 result = await query_table(table_name)
                 state["existing_table"] = result
-
-                if result:
-                    self._logger.info(f"✅ [查询表节点] 找到已存在的表: {result.get('nameZh', 'N/A')}")
-                else:
-                    self._logger.info("ℹ️ [查询表节点] 未找到已存在的表")
-            else:
-                self._logger.info("⚠️ [查询表节点] 缺少表名，跳过查询")
+                msg = f"✅ 找到表: {result.get('nameZh', 'N/A')}" if result else "ℹ️ 未找到表，将新建"
+                self._logger.info(msg)
+            except Exception as e:
+                self._logger.error(f"❌ 查询表失败: {str(e)}")
+                self._logger.error(f"❌ 查询表异常链路: {traceback.format_exc()}")
                 state["existing_table"] = None
-
-        except Exception as e:
-            self._logger.error(f"❌ [查询表节点] 查询表失败: {str(e)}")
-            self._logger.error(f"❌ [查询表节点] 异常链路: {traceback.format_exc()}")
+        else:
+            self._logger.info("⚠️ 缺少表名，跳过查询")
             state["existing_table"] = None
 
         return state
 
-    async def _execute_operation(self, state) -> Dict[str, Any]:
-        """执行表操作节点"""
+    async def _query_metrics(self, state) -> Dict[str, Any]:
+        """并行查询关联指标ID"""
+        metric_name_zh_list = state.get("metric_name_zh_list", [])
+        metric_ids = []
+        self._logger.info("📊 第3步：查询关联指标")
+        self._logger.info(f"🔍 待查指标: {metric_name_zh_list}")
+
+        if metric_name_zh_list:
+            # 构建并行查询任务
+            tasks = []
+            for name in metric_name_zh_list:
+                if name.strip():
+                    # query_metric_by_name_zh需要user_um参数，我们用默认值
+                    tasks.append(query_metric_by_name_zh(name.strip(), "system"))
+
+            if tasks:
+                self._logger.info(f"🚀 并行查询 {len(tasks)} 个指标")
+                try:
+                    results = await asyncio.gather(*tasks, return_exceptions=True)
+                    for idx, result in enumerate(results):
+                        name = metric_name_zh_list[idx].strip()
+                        if isinstance(result, dict) and result:
+                            metric_ids.append(result.get("id", ""))
+                            self._logger.info(f"✅ 找到指标: {name}")
+                        elif isinstance(result, Exception):
+                            self._logger.warning(f"⚠️ 指标查询异常: {name}")
+                        else:
+                            self._logger.info(f"🔍 未找到指标: {name}")
+                except Exception as e:
+                    self._logger.error(f"❌ 指标查询失败: {str(e)}")
+                    self._logger.error(f"❌ 指标查询异常链路: {traceback.format_exc()}")
+
+        # 构建格式化的指标信息键值对
+            metrics_info = ""
+            for i, name in enumerate(metric_name_zh_list):
+                metric_id = metric_ids[i] if i < len(metric_ids) else "N/A"
+                if metrics_info:
+                    metrics_info += "; "
+                metrics_info += f"{name}:{metric_id}"
+
+            state["metric_ids"] = metric_ids
+            state["metrics_info"] = metrics_info
+            self._logger.info(f"📊 共找到指标数: {len(metric_ids)}")
+            if metrics_info:
+                self._logger.info(f"📋 指标信息: {metrics_info}")
+
+        return state
+
+    async def _generate_table(self, state) -> Dict[str, Any]:
+        """生成最终表结构信息"""
         user_input = state["user_input"]
-        analysis_data = state.get("analysis_result", {})
+        operation_type = state.get("operation_type", "create")
         existing_table = state.get("existing_table")
-
-        operation_type = analysis_data.get("operation_type", "create")
-        table_name_zh = analysis_data.get("table_name_zh", "未知表")
-        table_name = analysis_data.get("table_name", "unknown_table")
-        db_name = analysis_data.get("db_name", "warehouse")
-        table_purpose = analysis_data.get("table_purpose", "")
-
-        self._logger.info(f"🔄 [执行操作节点] 执行表操作 - {operation_type}")
+        table_purpose = state.get("table_purpose", "")
+        metrics_info = state.get("metrics_info", "")
+        self._logger.info("📝 第4步：生成表结构")
 
         try:
-            # 根据操作类型和查询结果执行相应逻辑
-            if operation_type == "create":
-                if existing_table:
-                    # 表已存在
-                    existing_table_info = create_table_info_safe(existing_table)
-                    final_result = TableOperationResult(
-                        operation_type="create",
-                        status="exist",
-                        message=f"表 '{existing_table_info.nameZh}' 已存在，无需重复创建。请使用修改操作来更新表结构。",
-                        table_info=None,
-                        existing_table=existing_table_info
-                    )
-                else:
-                    # 创建新表 - 生成基本的表信息
-                    new_table_info = TableInfo(
-                        name=table_name or "generated_table",
-                        nameZh=table_name_zh,
-                        businessDomainId="default_domain",
-                        daName=db_name or "default_db",
-                        levelType=LevelType.SUB,
-                        type=TableType.IAT,
-                        tableProp=TableProp.NORMAL,
-                        particleSize="明细",
-                        itOwner="system",
-                        itGroup="data_team",
-                        businessOwner="待指定",
-                        businessGroup="待指定",
-                        cols=[]  # 实际字段需要根据业务需求生成
-                    )
+            # 获取业务域信息
+            domains = get_metric_domains()
+            domains_text = "\n".join([f"- {domain.get('id', '')}: {domain.get('nameZh', '')}" for domain in domains]) if domains else "无可用业务域"
 
-                    final_result = TableOperationResult(
-                        operation_type="create",
-                        status="success",
-                        message=f"表 '{new_table_info.nameZh}' 创建成功！",
-                        table_info=new_table_info,
-                        existing_table=None
-                    )
+            # 构建现有表信息
+            existing_info = f"已存在表信息：\n{json.dumps(existing_table, ensure_ascii=False, indent=2)}" if existing_table else "无已存在表"
 
-            elif operation_type == "update":
-                if not existing_table:
-                    # 表不存在，无法修改
-                    final_result = TableOperationResult(
-                        operation_type="update",
-                        status="not_exist",
-                        message=f"表 '{table_name_zh}' 不存在，无法修改。请先创建该表。",
-                        table_info=None,
-                        existing_table=None
-                    )
-                else:
-                    # 修改已存在的表
-                    existing_table_info = create_table_info_safe(existing_table)
-                    final_result = TableOperationResult(
-                        operation_type="update",
-                        status="success",
-                        message=f"表 '{existing_table_info.nameZh}' 更新成功！",
-                        table_info=existing_table_info,
-                        existing_table=None
-                    )
+            from langchain_core.prompts import ChatPromptTemplate
+            prompt = ChatPromptTemplate.from_template(TABLE_STRUCTURE_PROMPT)
 
-            elif operation_type == "query":
-                if not existing_table:
-                    # 表不存在
-                    final_result = TableOperationResult(
-                        operation_type="query",
-                        status="not_exist",
-                        message=f"表 '{table_name_zh}' 不存在。",
-                        table_info=None,
-                        existing_table=None
-                    )
-                else:
-                    # 表存在，返回查询结果
-                    existing_table_info = create_table_info_safe(existing_table)
-                    final_result = TableOperationResult(
-                        operation_type="query",
-                        status="success",
-                        message=f"表 '{existing_table_info.nameZh}' 查询成功！",
-                        table_info=existing_table_info,
-                        existing_table=existing_table_info
-                    )
-            else:
-                # 未知操作类型
+            chain = prompt | self.llm | self.table_parser
+            result = await chain.ainvoke({
+                "user_input": user_input,
+                "table_purpose": table_purpose,
+                "operation_type": operation_type,
+                "existing_info": existing_info,
+                "metrics_info": metrics_info,
+                "domains_text": domains_text,
+                "format_instructions": self.table_parser.get_format_instructions()
+            })
+
+            table_info = result
+            state["final_table_info"] = table_info
+
+            # 生成操作结果
+            if operation_type == "create" and existing_table:
+                # 表已存在
                 final_result = TableOperationResult(
-                    operation_type="unknown",
-                    status="error",
-                    message=f"不支持的操作类型: {operation_type}",
+                    operation_type="create",
+                    status="exist",
+                    message=f"表 '{existing_table.get('nameZh', 'N/A')}' 已存在，无需重复创建",
+                    table_info=None,
+                    existing_table=await create_table_info_safe(existing_table)
+                )
+            elif operation_type == "update" and not existing_table:
+                # 表不存在
+                final_result = TableOperationResult(
+                    operation_type="update",
+                    status="not_exist",
+                    message=f"表 '{table_info.nameZh}' 不存在，无法修改",
                     table_info=None,
                     existing_table=None
                 )
-
+            else:
+                # 成功
+                final_result = TableOperationResult(
+                    operation_type=operation_type,
+                    status="success",
+                    message=f"表 '{table_info.nameZh}' {operation_type}成功",
+                    table_info=table_info,
+                    existing_table=await create_table_info_safe(existing_table) if existing_table else None
+                )
 
             state["final_result"] = final_result
             state["success"] = True
-            self._logger.info(f"✅ [执行操作节点] 操作完成: {final_result.status} - {final_result.message}")
+
+            self._logger.info(f"✅ 表生成成功 - 表名: {table_info.nameZh}")
+            self._logger.info(f"📊 字段数: {len(table_info.cols)}")
 
         except Exception as e:
-            self._logger.error(f"❌ [执行操作节点] 执行表操作失败: {str(e)}")
-            self._logger.error(f"❌ [执行操作节点] 异常链路: {traceback.format_exc()}")
-            error_result = TableOperationResult(
+            self._logger.error(f"❌ 表生成失败: {str(e)}")
+            self._logger.error(f"❌ 表生成异常链路: {traceback.format_exc()}")
+            state["final_table_info"] = None
+            state["final_result"] = TableOperationResult(
                 operation_type=operation_type,
                 status="error",
-                message=f"操作执行失败: {str(e)}",
+                message=f"表生成失败: {str(e)}",
                 table_info=None,
                 existing_table=None
             )
-            state["final_result"] = error_result
             state["success"] = False
 
         return state
 
     async def process(self, user_input: str, **kwargs) -> AgentResponse:
         """处理用户输入的核心方法"""
-        self._logger.info("🚀 开始执行表管理工作流")
+        self._logger.info("🚀 启动表生成工作流")
 
+        table_name = kwargs.get("table_name")
         initial_state = {
             "messages": [],
             "user_input": user_input,
-            "analysis_result": None,
+            "table_name": table_name,
+            "operation_type": None,
+            "db_name": None,
+            "metric_name_zh_list": [],
+            "table_purpose": "",
             "existing_table": None,
+            "metric_ids": [],
+            "final_table_info": None,
             "final_result": None,
             "success": False
         }
@@ -300,31 +331,35 @@ class TableManagementAgent(BaseAgent):
 
             if result.get("success"):
                 final_result = result.get("final_result")
-                self._logger.info(f"🎉 表管理工作流执行成功!")
-                self._logger.info(f"🔄 操作类型: {final_result.operation_type}")
-                self._logger.info(f"📊 操作状态: {final_result.status}")
-                self._logger.info(f"💬 结果消息: {final_result.message}")
+                table_info = result.get("final_table_info")
 
-                return AgentResponse(
-                    success=True,
-                    data={
-                        "operation_result": final_result.model_dump(),
-                        "analysis": result.get("analysis_result", {})
-                    }
-                )
+                if final_result and final_result.status == "success":
+                    self._logger.info(f"✅ 工作流执行成功: {final_result.operation_type}")
+                    return AgentResponse(
+                        success=True,
+                        data={
+                            "operation_result": final_result.model_dump(),
+                            "table_info": table_info.model_dump() if table_info else None,
+                            "analysis": {}
+                        }
+                    )
+                else:
+                    return AgentResponse(
+                        success=False,
+                        error=final_result.message if final_result else "表操作失败"
+                    )
             else:
-                final_result = result.get("final_result")
                 return AgentResponse(
                     success=False,
-                    error=final_result.message if final_result else "表操作失败"
+                    error="工作流执行失败"
                 )
 
         except Exception as e:
-            self._logger.error(f"💥 表管理工作流出现异常: {str(e)}")
-            self._logger.error(f"💥 表管理工作流异常链路: {traceback.format_exc()}")
+            self._logger.error(f"❌ 工作流异常: {str(e)}")
+            self._logger.error(f"❌ 工作流异常链路: {traceback.format_exc()}")
             return AgentResponse(
                 success=False,
-                error=f"表操作异常: {str(e)}"
+                error=f"表生成异常: {str(e)}"
             )
 
 

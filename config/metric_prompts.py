@@ -27,11 +27,11 @@ METRIC_ANALYSIS_PROMPT = """你是一个专业的数据分析师，请仔细分�
    - applicationScenarios: 应用场景（HIVE_OFFLINE/OLAP_ONLINE）
    - type: 指标类型（IA原子指标/IB派生指标）
    - lv: 指标等级（T1最重要/T2重要/T3一般）
-   - processDomainId: 业务域ID（从上述列表中选择）
+   - processDomainId: 业务域ID（从可用域中选择一个最合适的）
    - safeLv: 安全等级（S1-S5）
    - businessCaliberDesc: 业务口径描述（详细说明指标的业务含义）
-   - businessOwner: 业务负责人（根据指标性质推断）
-   - businessTeam: 业务团队（如"产品团队"、"运营团队"等）
+   - businessOwner: 业务负责人，如果没有明确指定，默认为system
+   - businessTeam: 业务负责人归属团队，如果没有明确指定，默认为system_team
    - statisticalObject: 统计对象（如"用户"、"订单"、"商品"等）
    - statisticalRule: 统计规则（业务层面的统计逻辑）
    - statisticalRuleIt: IT统计规则（技术实现的具体规则）
